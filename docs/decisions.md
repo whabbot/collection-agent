@@ -15,6 +15,7 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 | Stack | Python 3.14 (latest stable) + FastAPI, Postgres, SQLAlchemy 2.x, Pydantic 2.x, managed with `uv`. Latest compatible versions of everything (decided 15 Oct 2026) |
 | Repo | `whabbot/collection-agent` |
 | Clearance deadline | 15th of the month **following** the month the invoice was sent; rolls to the next working day if it falls on a weekend or bank holiday |
+| Reply classifier | **Jev** (TypeSafe): typed decisions with calibrated probabilities. Use it directly; no comparison against other models. Classification only; drafting still needs a generative LLM. Key in `TYPESAFE_API_KEY` (the SDK default). No `summary` field in v1: Jev can't generate text, and reviewers read the email itself. See `docs/jev.md` (decided 15 Oct 2026) |
 | `ChasePolicy` defaults | 7 days no response; pre-deadline reminder 3 working days before the deadline; escalate after 3 reminders; 2 business days grace after a missed promise; no sends on weekends or England & Wales bank holidays (decided 15 Oct 2026) |
 
 ## Design decisions (proposed in the design, adopted as the working approach)
@@ -22,7 +23,7 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 - Use **Stripe Invoices**, not Payment Links. The invoice's `hosted_invoice_url` is the payment link in the email. Invoices carry customer, amount and due date, and emit webhooks (`invoice.paid`, `invoice.payment_failed`, and `invoice.overdue` / `invoice.will_be_due` via Billing Automations).
 - **Turn off Stripe's built-in reminder emails** so customers aren't chased twice.
 - **Hard rules are typed config, not Cognee retrieval.** Timing rules (7 days, 15th, max reminders) are extracted from policy docs into a Pydantic `ChasePolicy`, approved by a human, and read by the scheduler. Cognee holds soft guidance: tone, wording, exceptions, contract text, per-customer history.
-- **The LLM never decides when to chase or what it's allowed to do.** `decide_next_action` is a pure, unit-tested function. The LLM drafts emails and classifies replies.
+- **The LLM never decides when to chase or what it's allowed to do.** `decide_next_action` is a pure, unit-tested function. The LLM drafts emails; Jev classifies replies.
 - **Reply handling = classify → route by a code-defined table.** Customer emails are untrusted input; the agent has no tools that change money.
 - **Approval queue first.** All drafts (outbound and replies) go to a human for the first few weeks; auto-send is enabled per intent once accuracy is proven.
 - Contract payment terms are stored as structured data (due date + invoice metadata) at invoice creation, never re-derived from the contract.
@@ -34,7 +35,7 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 | Item | Proposed |
 |---|---|
 | Email provider (send + inbound) | Postmark |
-| LLM | Claude via Anthropic API |
+| LLM (drafting emails, contract answers) | Claude via Anthropic API |
 | Hosting | Render / Railway / Fly (needs a persistent worker + daily cron) |
 | Scheduler | Daily job, 08:00 UK time, weekdays only |
 

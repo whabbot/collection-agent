@@ -87,7 +87,9 @@ sent ──(no reply, policy timer)──▶ reminded ──▶ … ──▶ es
 - Dedupe on `Message-ID` (inbound webhooks can arrive more than once).
 - Drop `Auto-Submitted: auto-replied` / out-of-office before classifying; cap the agent at ~2 replies per thread per day to avoid bot-to-bot loops.
 
-### Classification (LLM, structured output)
+### Classification (Jev, typed decision with calibrated probability)
+
+Jev's probability fills `confidence`; per-intent thresholds on it decide human review vs auto-send.
 
 ```python
 class Intent(str, Enum):
@@ -105,8 +107,8 @@ class Intent(str, Enum):
 class ReplyClassification(BaseModel):
     intent: Intent
     confidence: float
+    # Assembled in code from Jev date-part Choices; see docs/jev.md.
     promised_date: date | None = None
-    summary: str
 ```
 
 Routing table is in code (see `decisions.md`), not in the prompt.

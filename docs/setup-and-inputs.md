@@ -11,6 +11,7 @@ STRIPE_SECRET_KEY=          # test mode first (sk_test_...)
 STRIPE_WEBHOOK_SECRET=
 POSTMARK_SERVER_TOKEN=      # or chosen provider
 ANTHROPIC_API_KEY=
+TYPESAFE_API_KEY=           # Jev reply classifier (name the SDK reads)
 COGNEE_BASE_URL=
 COGNEE_API_KEY=
 DATABASE_URL=
@@ -59,6 +60,7 @@ curl -sS -H "X-Api-Key: $COGNEE_API_KEY" "$COGNEE_BASE_URL/api/v1/datasets/"
 | Email domain | Subdomain (e.g. `billing.<domain>`) with SPF, DKIM, DMARC, plus MX for inbound | Needed |
 | Email provider | Postmark (or chosen) account, server token, inbound webhook URL | Needed |
 | Anthropic API | API key | Needed |
+| Jev (TypeSafe) | API key | User has one. When the reply-classifier slice starts, add `TYPESAFE_API_KEY=` to `.env.example` and tell the user to put the key in `.env` as `TYPESAFE_API_KEY` |
 | Postgres | Managed DB from host, or local Docker for dev | Needed |
 | Hosting | Render / Railway / Fly (worker + cron) | Needed |
 

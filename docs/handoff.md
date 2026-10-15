@@ -19,6 +19,7 @@ Policies (when to follow up, e.g. after 1 week of no response; company rules, e.
 | `docs/handoff.md` | This file: status and next steps |
 | `docs/decisions.md` | What's decided, what's a proposed default awaiting confirmation, open questions |
 | `docs/architecture.md` | The design: Stripe invoices, hard vs soft policy split, components, state machine, reply handling, guardrails |
+| `docs/jev.md` | Jev (TypeSafe) reply-classifier integration notes: SDK, limits, what they change in the design |
 | `docs/setup-and-inputs.md` | Accounts, credentials, inputs still needed, and how to re-create the Cognee setup in a new session |
 
 ## Status (15 Oct 2026)
@@ -43,6 +44,6 @@ The main session orchestrates: it writes a spec in `docs/plans/`, then hands the
 ## Next steps
 
 1. Slice 2: FastAPI + SQLAlchemy/Postgres skeleton, persisting invoices/reminders/replies and the approved `ChasePolicy`. When the scheduler is built, build the calendar with `uk_calendar([today.year, today.year + 1])` — deadlines cross into January.
-2. Then: Stripe webhook handler (recorded fixtures), reply classifier with synthetic test cases, approval queue.
+2. Then: Stripe webhook handler (recorded fixtures), reply classifier with synthetic test cases (**use Jev**, decided; at the start of that step, tell the user to put their Jev key in `.env` as `TYPESAFE_API_KEY`; read `docs/jev.md` first), approval queue.
 3. When policy docs arrive: load them into the Cognee `policies` dataset and test recall before deciding how much to extract into typed config.
 4. Open point from slice 1: should a contract-specific due date override the policy deadline? Currently the policy deadline is the only one.
