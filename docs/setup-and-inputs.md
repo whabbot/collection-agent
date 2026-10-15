@@ -20,6 +20,7 @@ ANTHROPIC_API_KEY=
 ANTHROPIC_MODEL=            # optional, defaults to claude-opus-5-5
 TYPESAFE_API_KEY=           # Jev reply classifier (name the SDK reads)
 JEV_MODEL=                  # optional, defaults to jev-1.13.0 (pinned)
+CLASSIFIER=                 # optional: jev (default) or claude (stand-in; uses ANTHROPIC_API_KEY)
 CLASSIFIER_MIN_CONFIDENCE=  # optional, defaults to 0.6; below this a reply goes to a human
 INBOUND_WEBHOOK_USER=       # HTTP Basic user Postmark sends to /webhooks/inbound
 INBOUND_WEBHOOK_PASSWORD=   # HTTP Basic password for the same

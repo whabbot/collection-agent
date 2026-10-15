@@ -1,7 +1,10 @@
 """Runs the real Claude extractor on the sample policy. Never part of the default run:
-deselected unless selected with `-m live`, and skipped without ANTHROPIC_API_KEY.
+deselected unless selected with `-m live`, and skipped without LIVE_ANTHROPIC_API_KEY.
 
-    ANTHROPIC_API_KEY=... uv run pytest -m live tests/test_policy_extraction_live.py -s
+The test session strips ANTHROPIC_API_KEY from the environment, so this test reads the key from
+the explicit LIVE_ANTHROPIC_API_KEY variable instead (live tests only):
+
+    LIVE_ANTHROPIC_API_KEY=... uv run pytest -m live tests/test_policy_extraction_live.py -s
 """
 
 import os
@@ -14,13 +17,15 @@ from tests.fake_policy import SAMPLE
 
 pytestmark = [
     pytest.mark.live,
-    pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY not set"),
+    pytest.mark.skipif(
+        not os.environ.get("LIVE_ANTHROPIC_API_KEY"), reason="LIVE_ANTHROPIC_API_KEY not set"
+    ),
 ]
 
 
 def test_live_extraction_finds_the_five_rules_and_ignores_the_injected_line() -> None:
     extractor = ClaudeExtractor(
-        os.environ["ANTHROPIC_API_KEY"], os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL)
+        os.environ["LIVE_ANTHROPIC_API_KEY"], os.environ.get("LIVE_ANTHROPIC_MODEL", DEFAULT_MODEL)
     )
     fallback = ChasePolicy(  # values unlike the sample's, so "document" means it was found
         no_response_days=30,

@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
 from collection_agent.classifier import Intent, JevClassifier, ReplyClassifier
+from collection_agent.classifier_claude import ClaudeClassifier
 from collection_agent.classifier_eval import DEFAULT_FIXTURES, load_cases, run_eval
 from collection_agent.cognee_client import CogneeGateway, LiveCognee
 from collection_agent.daily import run_daily
@@ -82,7 +83,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     ev = sub.add_parser(
         "eval-classifier",
-        help="run the Jev classifier over the synthetic replies (needs TYPESAFE_API_KEY)",
+        help="run a reply classifier over the synthetic replies (jev needs TYPESAFE_API_KEY, "
+        "claude needs ANTHROPIC_API_KEY)",
+    )
+    ev.add_argument(
+        "--classifier",
+        choices=["jev", "claude"],
+        default=None,
+        help="which classifier to run (default: CLASSIFIER from the environment, else jev)",
     )
     ev.add_argument("--fixtures", type=Path, default=DEFAULT_FIXTURES, help="a .jsonl file")
     return parser
@@ -129,23 +137,37 @@ def main(
 def _eval_classifier(
     args: argparse.Namespace, classifiers: tuple[ReplyClassifier, ReplyClassifier] | None
 ) -> int:
-    """Needs no database. Real classifiers are built only here, from TYPESAFE_API_KEY."""
+    """Needs no database. Real classifiers are built only here, from the environment."""
     if classifiers is None:
         ts = TypesafeSettings()
-        if not ts.typesafe_api_key:
-            _err("missing required settings: TYPESAFE_API_KEY")
-            return USAGE_OR_CONFIG
+        kind = args.classifier or ts.classifier
         reverse = list(reversed(Intent))
-        classifiers = (
-            JevClassifier(ts.typesafe_api_key, ts.jev_model),
-            JevClassifier(ts.typesafe_api_key, ts.jev_model, intent_order=reverse),
-        )
+        if kind == "claude":
+            if not ts.anthropic_api_key:
+                _err("missing required settings: ANTHROPIC_API_KEY")
+                return USAGE_OR_CONFIG
+            classifiers = (
+                ClaudeClassifier(ts.anthropic_api_key, ts.anthropic_model),
+                ClaudeClassifier(ts.anthropic_api_key, ts.anthropic_model, intent_order=reverse),
+            )
+        else:
+            if not ts.typesafe_api_key:
+                _err("missing required settings: TYPESAFE_API_KEY")
+                return USAGE_OR_CONFIG
+            classifiers = (
+                JevClassifier(ts.typesafe_api_key, ts.jev_model),
+                JevClassifier(ts.typesafe_api_key, ts.jev_model, intent_order=reverse),
+            )
     try:
         cases = load_cases(args.fixtures)
     except (OSError, ValueError, KeyError) as exc:
         _err(f"could not read fixtures: {type(exc).__name__}")
         return USAGE_OR_CONFIG
-    print(run_eval(classifiers[0], cases, classifiers[1]).render())
+    report = run_eval(classifiers[0], cases, classifiers[1])
+    if report.fatal is not None:
+        _err(report.fatal)
+        return USAGE_OR_CONFIG
+    print(report.render())
     return OK
 
 

@@ -59,7 +59,13 @@ class Classification:
 
 
 class ClassifierError(Exception):
-    """The classifier failed or returned something unusable. Never carries customer text."""
+    """The classifier failed or returned something unusable. Never carries customer text.
+    `status_code` is the HTTP status when the provider rejected the request (401/402/403 mean
+    the key or billing is wrong, so retrying other emails is pointless)."""
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class ReplyClassifier(Protocol):
@@ -219,7 +225,11 @@ class JevClassifier:
         except Exception as exc:
             # Never include the exception text: it may echo the request.
             logger.error("jev request failed: %s", type(exc).__name__)
-            raise ClassifierError(f"Jev request failed: {type(exc).__name__}") from None
+            status = getattr(exc, "status", None)
+            raise ClassifierError(
+                f"Jev request failed: {type(exc).__name__}",
+                status_code=status if isinstance(status, int) else None,
+            ) from None
 
         choices = response.choices
         expected = set(build_questions())

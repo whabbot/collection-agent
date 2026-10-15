@@ -33,7 +33,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "db: needs the compose Postgres test database (docker compose up -d db)",
-    "live: calls real APIs (Jev needs TYPESAFE_API_KEY, Claude needs ANTHROPIC_API_KEY); deselected unless run with -m live",
+    "live: calls real APIs (Jev needs LIVE_TYPESAFE_API_KEY, Claude needs LIVE_ANTHROPIC_API_KEY); deselected unless run with -m live",
 ]
 
 [tool.ruff]

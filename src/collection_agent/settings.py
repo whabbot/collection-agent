@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     company_name: str | None = None
     typesafe_api_key: str | None = None
     jev_model: str = "jev-1.13.0"
+    classifier: Literal["jev", "claude"] = "jev"
     classifier_min_confidence: float = Field(default=0.6, ge=0, le=1)
     inbound_webhook_user: str | None = None
     inbound_webhook_password: str | None = None
@@ -42,12 +43,15 @@ class Settings(BaseSettings):
 
 
 class TypesafeSettings(BaseSettings):
-    """Just what the classifier needs, so `eval-classifier` doesn't require DATABASE_URL."""
+    """Just what the classifiers need, so `eval-classifier` doesn't require DATABASE_URL."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     typesafe_api_key: str | None = None
     jev_model: str = "jev-1.13.0"
+    classifier: Literal["jev", "claude"] = "jev"
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-opus-5-5"
 
 
 @lru_cache

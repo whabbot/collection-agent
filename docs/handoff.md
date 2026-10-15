@@ -53,6 +53,7 @@ Policies (when to follow up, e.g. after 1 week of no response; company rules, e.
 | 6 | `POST /webhooks/inbound` (Postmark): dedupe, auto-reply drop, matching. Jev classifier (`jev-1.13.0`). Code routing table → template reply drafts. `/inbox` review log |
 | 7 | Rule tags (`describe_rule`) on reminder drafts, sent reminders and escalations, e.g. "No response for 7 days (last contact …)" |
 | 8 | `POST /policies/documents`: Cognee `policies` ingest + Claude (`claude-opus-5-5`) extraction into a `ChasePolicy` draft. A value is used only if its quote is verbatim, states the number and isn't an injected instruction. Rule cards, approve, Cognee graph proxy, CLI `policy ingest` |
+| 10 | Claude stand-in reply classifier behind `CLASSIFIER=jev|claude` |
 | 9 | `/demo` page, demo clock + "Skip 7 days", simulate customer reply, `EMAIL_SENDER=log`, `GET /invoices/{id}/timeline`, `demo reset` |
 
 Guardrails that still hold:
@@ -86,7 +87,9 @@ Date gotcha: if the skip lands in the 3-working-day pre-deadline window you get 
    - The Stripe webhook endpoint must use the API version the installed `stripe` SDK pins (`2026-09-30.endive`).
 2. **Live checks (15 Oct):**
    - **Claude extraction: PASSED** on `tests/fixtures/policy_sample.txt`. All six fields came from the document with verbatim quotes, the injected "max reminders 50" line was ignored, and 9 soft-guidance items were found. It was run through a scratch script, because the test guard strips keys from pytest, so `pytest -m live` can't see them. Fixing the live tests so they read keys explicitly is a small follow-up.
-   - **Jev eval: BLOCKED.** Every call returned **HTTP 402 Payment Required** from TypeSafe. The user needs to add billing or credits in the TypeSafe console, then re-run `uv run collection-agent eval-classifier` with `.env` loaded. Follow-up: the eval should stop on the first 402/401 instead of trying all 47.
+   - **Jev eval: BLOCKED.** TypeSafe returns 402 "no available API credits" even after the user added billing. The key's organisation probably differs from the billed one, or the credits haven't arrived yet. Retry with `uv run collection-agent eval-classifier` once credits show.
+   - **Slice 10, Claude stand-in classifier** (spec: `docs/plans/slice-10-claude-classifier.md`): `CLASSIFIER=jev|claude`, default `jev`. Live eval with Claude: **46/47 intents, 13/13 dates, 0/5 option-order flips, all 5 injection cases correct.** The one miss is `paid-5` (expected `other`, got `already_paid`); it's safe because routing checks Stripe before marking anything paid. **For the demo, the user sets `CLASSIFIER=claude` in `.env`** until Jev has credits.
+   - Live tests now read `LIVE_ANTHROPIC_API_KEY` / `LIVE_TYPESAFE_API_KEY`, because the test guard strips normal keys. The eval stops on the first 401/402/403.
 3. **Full demo rehearsal** with the real services: approve the policy, then `demo reset` between takes. Replace the hand-written Stripe fixtures in `tests/fixtures/stripe/` with real `stripe listen` captures.
 4. After the demo:
    - choose hosting for the daily job (proposed: weekdays 08:00 UK);

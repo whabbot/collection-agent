@@ -12,6 +12,7 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session, sessionmaker
 
 from collection_agent.classifier import JevClassifier, ReplyClassifier
+from collection_agent.classifier_claude import ClaudeClassifier
 from collection_agent.cognee_client import CogneeGateway, LiveCognee
 from collection_agent.db.engine import make_engine, make_session_factory
 from collection_agent.demo_support import LoggingEmailSender, clock_now, clock_today
@@ -182,7 +183,16 @@ def _jev_classifier(api_key: str, model: str) -> JevClassifier:
     return JevClassifier(api_key, model)
 
 
+@lru_cache
+def _claude_classifier(api_key: str, model: str) -> ClaudeClassifier:
+    return ClaudeClassifier(api_key, model)
+
+
 def get_reply_classifier(settings: SettingsDep) -> ReplyClassifier | None:
+    if settings.classifier == "claude":
+        if not settings.anthropic_api_key:
+            return None
+        return _claude_classifier(settings.anthropic_api_key, settings.anthropic_model)
     if not settings.typesafe_api_key:
         return None
     return _jev_classifier(settings.typesafe_api_key, settings.jev_model)

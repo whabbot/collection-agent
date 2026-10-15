@@ -18,6 +18,7 @@ from collection_agent.classifier import (
 
 DEFAULT_FIXTURES = Path("tests/fixtures/replies.jsonl")
 FLIP_SAMPLE = 5
+FATAL_STATUS_CODES = (401, 402, 403)  # bad key, no credits, no access: every later case fails too
 _UNSET = object()
 
 
@@ -76,6 +77,7 @@ class EvalReport:
     date_misses: list[str] = field(default_factory=list)
     flips: list[tuple[str, str, str]] = field(default_factory=list)  # (id, normal, reversed)
     flip_checked: int = 0
+    fatal: str | None = None  # set when the run stopped early on an auth or billing error
 
     def render(self) -> str:
         lines = [f"cases: {self.total}   classifier errors: {len(self.errors)}"]
@@ -104,6 +106,16 @@ def run_eval(
     reversed_classifier: ReplyClassifier | None = None,
 ) -> EvalReport:
     report = EvalReport(total=len(cases))
+
+    def stop(case_id: str, exc: ClassifierError) -> bool:
+        if exc.status_code in FATAL_STATUS_CODES:
+            report.fatal = (
+                f"stopped at {case_id}: the provider rejected the request "
+                f"(HTTP {exc.status_code}); check the API key and billing"
+            )
+            return True
+        return False
+
     tally: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     got_by_id: dict[str, str] = {}
     for case in cases:
@@ -111,6 +123,8 @@ def run_eval(
         try:
             result = classifier.classify(case.text, case.facts())
         except ClassifierError as exc:
+            if stop(case.id, exc):
+                return report
             report.errors.append(f"{case.id}: {exc}")
             continue
         got_by_id[case.id] = result.intent.value
@@ -138,6 +152,8 @@ def run_eval(
             try:
                 other = reversed_classifier.classify(case.text, case.facts()).intent.value
             except ClassifierError as exc:
+                if stop(case.id, exc):
+                    return report
                 report.errors.append(f"{case.id} (reversed): {exc}")
                 continue
             if other != got_by_id[case.id]:
