@@ -250,6 +250,8 @@ class EscalatedInvoiceOut(BaseModel):
     currency: str
     due_on: date
     escalated_at: datetime | None
+    escalation_rule_code: str | None
+    escalation_rule_label: str | None
     reminder_count: int
 
 
@@ -282,6 +284,8 @@ def list_invoices(
                 currency=inv.currency,
                 due_on=inv.due_on,
                 escalated_at=inv.escalated_at,
+                escalation_rule_code=inv.escalation_rule_code,
+                escalation_rule_label=inv.escalation_rule_label,
                 reminder_count=count,
             ).model_dump(mode="json")
             for inv, cust, count in rows

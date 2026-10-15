@@ -41,6 +41,7 @@ from collection_agent.db.repository import (
 from collection_agent.deps import EmailIdentity
 from collection_agent.outbox import new_outbound_email
 from collection_agent.policy import ChasePolicy
+from collection_agent.rules import describe_rule
 from collection_agent.stripe_gateway import StripeGateway
 from collection_agent.templates import ReminderFacts, render_reminder_email
 
@@ -243,12 +244,15 @@ def _decide_and_apply(
         if stripe_outcome is not None:
             return stripe_outcome
 
+    tag = describe_rule(action, inputs.invoice, policy, inputs.reminders, inputs.replies, today)
     if action is Action.ESCALATE_TO_HUMAN:
         if not dry_run:
             invoice.state = InvoiceState.ESCALATED
             invoice.escalated_at = datetime.now(UTC)
+            invoice.escalation_rule_code = tag.code
+            invoice.escalation_rule_label = tag.label
             session.flush()
-        return ESCALATED
+        return f"{ESCALATED}[{tag.code}]"
 
     kind = _ACTION_KIND[action]
     customer = session.get(Customer, invoice.customer_id)
@@ -279,10 +283,12 @@ def _decide_and_apply(
                 subject=subject,
                 body=body,
                 attach_contract=False,
+                rule_code=tag.code,
+                rule_label=tag.label,
             )
         )
         session.flush()  # surfaces a unique-index race here, inside the try
-    return f"drafted:{kind.value}"
+    return f"drafted:{kind.value}[{tag.code}]"
 
 
 def _recheck_stripe(gateway: StripeGateway, invoice: Invoice) -> str | None:

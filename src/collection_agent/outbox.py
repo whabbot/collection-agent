@@ -29,6 +29,8 @@ def new_outbound_email(
     in_reply_to_message_id: str | None = None,
     references: str | None = None,
     inbound_message_id: uuid.UUID | None = None,
+    rule_code: str | None = None,
+    rule_label: str | None = None,
 ) -> OutboundEmail:
     """A `pending_approval` outbox row. From and Reply-To are the same for every kind: the
     reply address carries the invoice's token so replies map back to the invoice."""
@@ -46,6 +48,8 @@ def new_outbound_email(
         in_reply_to_message_id=in_reply_to_message_id,
         references=references,
         inbound_message_id=inbound_message_id,
+        rule_code=rule_code,
+        rule_label=rule_label,
     )
 
 
@@ -69,4 +73,11 @@ def apply_sent(
         if invoice.sent_on is None:
             invoice.sent_on = today
     elif kind in REMINDER_OUTBOUND_KINDS:
-        record_reminder(session, invoice.id, REMINDER_OUTBOUND_KINDS[kind], today)
+        record_reminder(
+            session,
+            invoice.id,
+            REMINDER_OUTBOUND_KINDS[kind],
+            today,
+            rule_code=row.rule_code,
+            rule_label=row.rule_label,
+        )

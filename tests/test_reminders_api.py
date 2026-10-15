@@ -26,6 +26,8 @@ from tests.fake_stripe import FakeStripeGateway
 
 pytestmark = pytest.mark.db
 
+NO_RESPONSE_LABEL = "No response for 7 days (last contact Thursday 1 October 2026)"
+
 
 def setup(session: Session, today: date = THU_8_OCT) -> tuple[TestClient, FakeEmailSender]:
     sender = FakeEmailSender()
@@ -231,6 +233,77 @@ def test_resolve_sent_on_a_stuck_reminder_records_it(
     assert load_decision_inputs(session, inv.id).reminders == [
         ReminderSent(kind=recorded, sent_on=THU_8_OCT)
     ]
+    assert (rem.rule_code, rem.rule_label) == (None, None)  # an untagged row stays untagged
+
+
+def test_resolve_sent_on_a_tagged_stuck_reminder_copies_the_tag(session: Session) -> None:
+    inv = chased_invoice(session)
+    row = stuck(session, inv, OutboundKind.REMINDER)
+    row.rule_code, row.rule_label = "no_response", NO_RESPONSE_LABEL
+    session.commit()
+    client, _ = setup(session)
+
+    assert resolve(client, row.id).status_code == 200  # type: ignore[attr-defined]
+
+    (rem,) = session.scalars(select(Reminder)).all()
+    assert (rem.rule_code, rem.rule_label) == ("no_response", NO_RESPONSE_LABEL)
+
+
+def test_approving_a_tagged_reminder_copies_the_tag_to_the_reminder_row(
+    session: Session, session_factory: sessionmaker[Session]
+) -> None:
+    _, row = draft_reminder(session, session_factory)
+    client, _ = setup(session)
+
+    assert approve(client, row.id) == 200
+
+    (rem,) = session.scalars(select(Reminder)).all()
+    assert (rem.rule_code, rem.rule_label) == ("no_response", NO_RESPONSE_LABEL)
+
+
+def test_outbox_responses_include_the_rule_fields(
+    session: Session, session_factory: sessionmaker[Session]
+) -> None:
+    _, row = draft_reminder(session, session_factory)
+    client, _ = setup(session)
+    expected = {"rule_code": "no_response", "rule_label": NO_RESPONSE_LABEL}
+
+    one = client.get(f"/outbox/{row.id}", headers=AUTH).json()
+    assert {k: one[k] for k in expected} == expected
+    listed = client.get("/outbox", headers=AUTH).json()
+    assert {k: listed[0][k] for k in expected} == expected
+    approved = client.post(f"/outbox/{row.id}/approve", json={"approved_by": "sam"}, headers=AUTH)
+    assert {k: approved.json()[k] for k in expected} == expected
+
+
+def test_reject_and_resolve_responses_include_the_rule_fields(
+    session: Session, session_factory: sessionmaker[Session]
+) -> None:
+    _, row = draft_reminder(session, session_factory)
+    client, _ = setup(session)
+    resp = client.post(
+        f"/outbox/{row.id}/reject", json={"rejected_by": "sam", "reason": "no"}, headers=AUTH
+    )
+    assert resp.status_code == 200
+    assert (resp.json()["rule_code"], resp.json()["rule_label"]) == (
+        "no_response",
+        NO_RESPONSE_LABEL,
+    )
+
+    inv = chased_invoice(session)
+    stuck_row = stuck(session, inv, OutboundKind.REMINDER)
+    stuck_row.rule_code, stuck_row.rule_label = "pre_deadline", "L"
+    session.commit()
+    resolved = resolve(client, stuck_row.id).json()  # type: ignore[attr-defined]
+    assert (resolved["rule_code"], resolved["rule_label"]) == ("pre_deadline", "L")
+
+
+def test_non_reminder_rows_have_null_rule_fields(session: Session) -> None:
+    inv = chased_invoice(session)
+    row = stuck(session, inv, OutboundKind.INVOICE)
+    client, _ = setup(session)
+    body = client.get(f"/outbox/{row.id}", headers=AUTH).json()
+    assert (body["rule_code"], body["rule_label"]) == (None, None)
 
 
 def test_resolve_failed_frees_the_slot_and_records_nothing(
@@ -250,7 +323,7 @@ def test_resolve_failed_frees_the_slot_and_records_nothing(
     assert session.scalars(select(Reminder)).all() == []
     assert inv.state is InvoiceState.ACTIVE
     again = run_daily(session_factory, FakeStripeGateway(), IDENTITY, THU_8_OCT)
-    assert [i.outcome for i in again.invoices] == ["drafted:reminder"]
+    assert [i.outcome for i in again.invoices] == ["drafted:reminder[no_response]"]
 
 
 @pytest.mark.parametrize(
@@ -336,6 +409,8 @@ def test_escalations_list_filters_and_orders_newest_first(session: Session) -> N
         "due_on": "2026-11-16",
         "escalated_at": "2026-10-05T00:00:00Z",
         "reminder_count": 2,
+        "escalation_rule_code": None,
+        "escalation_rule_label": None,
     }
     assert rows[1]["reminder_count"] == 0
 
@@ -344,3 +419,22 @@ def test_escalations_list_only_supports_the_escalated_filter(session: Session) -
     client, _ = setup(session)
     assert client.get("/invoices", headers=AUTH).status_code == 422
     assert client.get("/invoices", params={"state": "active"}, headers=AUTH).status_code == 422
+
+
+def test_escalations_list_includes_the_escalation_tag(
+    session: Session, session_factory: sessionmaker[Session]
+) -> None:
+    approve_default_policy(session)
+    inv = chased_invoice(session, sent_on=date(2026, 9, 1))
+    for sent in (date(2026, 9, 8), date(2026, 9, 15), date(2026, 9, 22)):
+        record_reminder(session, inv.id, ReminderKind.REMINDER, sent)
+    session.commit()
+    run_daily(session_factory, FakeStripeGateway(), IDENTITY, THU_8_OCT)
+    client, _ = setup(session)
+
+    (row,) = client.get("/invoices", params={"state": "escalated"}, headers=AUTH).json()
+
+    assert row["escalation_rule_code"] == "max_reminders"
+    assert row["escalation_rule_label"] == (
+        "3 reminders sent without payment \u2014 passed to a person"
+    )

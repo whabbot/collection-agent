@@ -209,3 +209,25 @@ def test_0005_check_constraints_reject_unknown_values(db_engine: Engine) -> None
     ):
         with pytest.raises(IntegrityError), db_engine.begin() as conn:
             conn.execute(text(bad.format(col=col, val=val)))
+
+
+def test_0006_round_trips_and_adds_the_rule_columns(db_engine: Engine) -> None:
+    cfg = alembic_config(get_test_database_url())
+    command.downgrade(cfg, "0005")
+    insp = inspect(db_engine)
+    for table, cols in (
+        ("outbound_emails", {"rule_code", "rule_label"}),
+        ("reminders", {"rule_code", "rule_label"}),
+        ("invoices", {"escalation_rule_code", "escalation_rule_label"}),
+    ):
+        assert not cols & {c["name"] for c in insp.get_columns(table)}
+    command.upgrade(cfg, "head")
+    insp = inspect(db_engine)
+    for table, cols in (
+        ("outbound_emails", {"rule_code", "rule_label"}),
+        ("reminders", {"rule_code", "rule_label"}),
+        ("invoices", {"escalation_rule_code", "escalation_rule_label"}),
+    ):
+        found = {c["name"]: c for c in insp.get_columns(table)}
+        assert cols <= set(found)
+        assert all(found[c]["nullable"] for c in cols)

@@ -118,6 +118,8 @@ class Invoice(Base):
     paused_until: Mapped[date | None] = mapped_column(Date)
     promised_date: Mapped[date | None] = mapped_column(Date)
     escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    escalation_rule_code: Mapped[str | None] = mapped_column(String)
+    escalation_rule_label: Mapped[str | None] = mapped_column(String)
     reply_token: Mapped[str] = mapped_column(String, unique=True, default=_new_reply_token)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -133,6 +135,8 @@ class Reminder(Base):
     invoice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("invoices.id"))
     kind: Mapped[ReminderKind] = mapped_column(_pg_enum(ReminderKind, "reminder_kind"))
     sent_on: Mapped[date] = mapped_column(Date)
+    rule_code: Mapped[str | None] = mapped_column(String)
+    rule_label: Mapped[str | None] = mapped_column(String)
 
 
 MATCH_METHODS = ("reply_token", "in_reply_to", "sender", "none")
@@ -308,6 +312,8 @@ class OutboundEmail(Base):
     body_text: Mapped[str] = mapped_column(Text)
     attach_contract: Mapped[bool] = mapped_column(Boolean)
     status: Mapped[OutboundStatus] = mapped_column(_pg_enum(OutboundStatus, "outbound_status"))
+    rule_code: Mapped[str | None] = mapped_column(String)
+    rule_label: Mapped[str | None] = mapped_column(String)
     approved_by: Mapped[str | None] = mapped_column(String)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejected_by: Mapped[str | None] = mapped_column(String)

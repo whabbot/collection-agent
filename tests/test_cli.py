@@ -139,7 +139,7 @@ def test_dry_run_prints_json_and_exits_0(
     report = json.loads(capsys.readouterr().out)
     assert report["dry_run"] is True
     assert report["run_date"] == "2026-10-08"
-    assert report["counts"] == {"would_drafted:reminder": 1}
+    assert report["counts"] == {"would_drafted:reminder[no_response]": 1}
     assert report["invoices"][0]["reference"] == "INV-1"
     assert gateway.calls == []
     assert session.scalars(select(OutboundEmail)).all() == []
@@ -166,7 +166,7 @@ def test_live_run_drafts_and_records_the_run(
     code = cli(["run-daily", *DATE], factory=session_factory, gateway=FakeStripeGateway())
 
     assert code == 0
-    assert json.loads(capsys.readouterr().out)["counts"] == {"drafted:reminder": 1}
+    assert json.loads(capsys.readouterr().out)["counts"] == {"drafted:reminder[no_response]": 1}
     assert len(session.scalars(select(OutboundEmail)).all()) == 1
     assert session.scalar(select(func.count(DailyRun.id))) == 1
 

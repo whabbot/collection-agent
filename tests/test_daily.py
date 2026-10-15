@@ -87,8 +87,8 @@ def test_due_reminder_is_drafted_with_exact_text(
 
     report = go(session_factory, gateway)
 
-    assert outcomes(report) == ["drafted:reminder"]
-    assert report.counts == {"drafted:reminder": 1}
+    assert outcomes(report) == ["drafted:reminder[no_response]"]
+    assert report.counts == {"drafted:reminder[no_response]": 1}
     assert gateway.methods() == ["get_invoice_status"]
     (row,) = outboxes(session)
     assert row.status is OutboundStatus.PENDING_APPROVAL
@@ -97,6 +97,8 @@ def test_due_reminder_is_drafted_with_exact_text(
     assert row.to_address == "ap@acme.test"
     assert (row.from_address, row.from_name) == ("billing@billing.example.test", "Acme Billing")
     assert row.reply_to == f"reply+{inv.reply_token}@billing.example.test"
+    assert row.rule_code == "no_response"
+    assert row.rule_label == "No response for 7 days (last contact Thursday 1 October 2026)"
     assert row.subject == "Reminder: invoice INV-9 from Acme Co"
     assert row.body_text == (
         "Hello Acme Ltd,\n\n"
@@ -162,7 +164,7 @@ def test_rejected_reminder_is_redrafted_next_run(
     row.status = OutboundStatus.REJECTED
     session.flush()
 
-    assert outcomes(go(session_factory, FakeStripeGateway())) == ["drafted:reminder"]
+    assert outcomes(go(session_factory, FakeStripeGateway())) == ["drafted:reminder[no_response]"]
 
 
 def test_approved_reminder_makes_next_weeks_run_draft_level_two(
@@ -180,7 +182,7 @@ def test_approved_reminder_makes_next_weeks_run_draft_level_two(
     next_week = go(session_factory, FakeStripeGateway(), date(2026, 10, 15))
 
     assert outcomes(same_day) == ["nothing_due"]
-    assert outcomes(next_week) == ["drafted:reminder"]
+    assert outcomes(next_week) == ["drafted:reminder[no_response]"]
     second = outboxes(session)[-1]
     assert second.id != first.id
     assert second.subject == "Second reminder: invoice INV-9"
@@ -197,9 +199,14 @@ def test_squeeze_scenario_drafts_a_pre_deadline_reminder(
 
     report = go(session_factory, FakeStripeGateway(), date(2026, 11, 13))
 
-    assert outcomes(report) == ["drafted:reminder_pre_deadline"]
+    assert outcomes(report) == ["drafted:reminder_pre_deadline[pre_deadline]"]
     (row,) = outboxes(session)
     assert row.kind == "reminder_pre_deadline"
+    assert row.rule_code == "pre_deadline"
+    assert row.rule_label == (
+        "Payment must clear by the 15th \u2014 reminder 3 working days before "
+        "Monday 16 November 2026"
+    )
     assert (
         "This is a reminder that invoice INV-12 for £120.00 is due by Monday 16 November 2026."
         in row.body_text
@@ -214,9 +221,13 @@ def test_broken_promise_names_the_promised_date(
 
     report = go(session_factory, FakeStripeGateway())  # grace ends Wed 7 Oct
 
-    assert outcomes(report) == ["drafted:reminder_broken_promise"]
+    assert outcomes(report) == ["drafted:reminder_broken_promise[broken_promise]"]
     (row,) = outboxes(session)
     assert row.kind == "reminder_broken_promise"
+    assert row.rule_code == "broken_promise"
+    assert row.rule_label == (
+        "Promised payment by Monday 5 October 2026 not received (2 working days' grace)"
+    )
     assert "by Monday 5 October 2026, but we haven't yet received payment." in row.body_text
 
 
@@ -230,11 +241,15 @@ def test_max_reminders_then_silence_escalates_without_a_draft(
 
     report = go(session_factory, FakeStripeGateway(), date(2026, 10, 29))
 
-    assert outcomes(report) == ["escalated"]
+    assert outcomes(report) == ["escalated[max_reminders]"]
     assert outboxes(session) == []
     session.refresh(inv)
     assert inv.state is InvoiceState.ESCALATED
     assert inv.escalated_at is not None
+    assert inv.escalation_rule_code == "max_reminders"
+    assert inv.escalation_rule_label == (
+        "3 reminders sent without payment \u2014 passed to a person"
+    )
     # And it leaves the daily list for good.
     assert outcomes(go(session_factory, FakeStripeGateway(), date(2026, 11, 5))) == []
 
@@ -335,7 +350,7 @@ def test_stripe_error_on_one_invoice_does_not_stop_the_others(
     report = go(session_factory, gateway)
 
     by_ref = {i.reference: i.outcome for i in report.invoices}
-    assert by_ref == {"BAD": "stripe_error", "GOOD": "drafted:reminder"}
+    assert by_ref == {"BAD": "stripe_error", "GOOD": "drafted:reminder[no_response]"}
     assert report.has_errors
     (row,) = outboxes(session)
     assert row.invoice_id == good.id
@@ -357,7 +372,7 @@ def test_unexpected_error_on_one_invoice_is_isolated(
 
     assert {i.reference: i.outcome for i in report.invoices} == {
         "BROKEN": "error",
-        "FINE": "drafted:reminder",
+        "FINE": "drafted:reminder[no_response]",
     }
     assert report.has_errors
     assert len(outboxes(session)) == 1
@@ -377,9 +392,9 @@ def test_dry_run_writes_nothing_and_never_calls_stripe(
     report = run_daily(session_factory, gateway, None, THU_8_OCT, dry_run=True)
 
     assert {i.reference: i.outcome for i in report.invoices} == {
-        "DUE": "would_drafted:reminder",
+        "DUE": "would_drafted:reminder[no_response]",
         "LATER": "nothing_due",
-        "ESC": "would_escalated",
+        "ESC": "would_escalated[max_reminders]",
     }
     assert report.dry_run
     assert gateway.calls == []
@@ -387,6 +402,7 @@ def test_dry_run_writes_nothing_and_never_calls_stripe(
     assert session.scalar(select(func.count(DailyRun.id))) == 0
     session.refresh(esc)
     assert (esc.state, esc.escalated_at) == (InvoiceState.ACTIVE, None)
+    assert (esc.escalation_rule_code, esc.escalation_rule_label) == (None, None)
     assert due.status is InvoiceStatus.OPEN
 
 
@@ -416,8 +432,14 @@ def test_report_to_dict_is_json_ready(
     assert out == {
         "run_date": "2026-10-08",
         "dry_run": False,
-        "counts": {"drafted:reminder": 1},
-        "invoices": [{"invoice_id": str(inv.id), "reference": "R1", "outcome": "drafted:reminder"}],
+        "counts": {"drafted:reminder[no_response]": 1},
+        "invoices": [
+            {
+                "invoice_id": str(inv.id),
+                "reference": "R1",
+                "outcome": "drafted:reminder[no_response]",
+            }
+        ],
     }
 
 

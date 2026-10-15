@@ -159,6 +159,8 @@ class OutboxOut(BaseModel):
     reply_to: str
     subject: str
     body_text: str
+    rule_code: str | None
+    rule_label: str | None
     attach_contract: bool
     contract: ContractInfo | None
     approved_by: str | None
@@ -203,6 +205,8 @@ def _out(session: Session, row: OutboundEmail) -> OutboxOut:
         reply_to=row.reply_to,
         subject=row.subject,
         body_text=row.body_text,
+        rule_code=row.rule_code,
+        rule_label=row.rule_label,
         attach_contract=row.attach_contract,
         contract=_contract_info(session, row),
         approved_by=row.approved_by,

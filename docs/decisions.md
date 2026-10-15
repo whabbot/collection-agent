@@ -19,6 +19,8 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 | Reminder drafting (v1) | **Fixed plain-text templates** (friendly → firm → formal by reminder number), no LLM. Claude drafting comes later, once tone examples and policy docs exist. Every draft is human-approved (decided 15 Oct 2026) |
 | Reply routing (v1) | Code table, decided 15 Oct 2026. Every reply we draft goes through the approval outbox as template text (no LLM). **Already paid** → verify in Stripe; if paid, mark paid + thank-you draft; else draft asking for a remittance reference. **Promise to pay** → if the date is on or before the invoice's `due_on`: set `promised_date`, pause until promise + grace, draft acknowledgement; otherwise human. **Extension / payment plan** → human + holding-reply draft. **Dispute** → stop chasing (`disputed`) + human + holding-reply draft. **Admin: resend** → draft resend with link + contract; **admin: billing-detail change** → human + holding reply. **Contract question** → human (until contracts are in Cognee). **Out of office** → not a response, ignored. **Other / low confidence** → human, no draft |
 | Promise-to-pay limit | The agent may accept a promised date no later than the invoice's `due_on`; anything later goes to a human (decided 15 Oct 2026) |
+| LLM | **Claude via Anthropic API**, used first for one thing: reading pasted policy text and proposing a `ChasePolicy` draft, which a human approves. Reminder and reply drafts stay as reviewed templates for now (decided 15 Oct 2026) |
+| Hackathon demo | A 60-second demo is the current priority. Order: rule tags on reminders → Cognee policy ingest + Claude extraction into rule cards + approve → one-page demo UI (decided 15 Oct 2026) |
 | Reply classifier | **Jev** (TypeSafe): typed decisions with calibrated probabilities. Use it directly; no comparison against other models. Classification only; drafting still needs a generative LLM. Key in `TYPESAFE_API_KEY` (the SDK default). No `summary` field in v1: Jev can't generate text, and reviewers read the email itself. See `docs/jev.md` (decided 15 Oct 2026) |
 | `ChasePolicy` defaults | 7 days no response; pre-deadline reminder 3 working days before the deadline; escalate after 3 reminders; 2 business days grace after a missed promise; no sends on weekends or England & Wales bank holidays (decided 15 Oct 2026) |
 
@@ -38,7 +40,6 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 
 | Item | Proposed |
 |---|---|
-| LLM (drafting emails, contract answers) | Claude via Anthropic API |
 | Hosting | Render / Railway / Fly (needs a persistent worker + daily cron) |
 | Scheduler | Daily job, 08:00 UK time, weekdays only |
 

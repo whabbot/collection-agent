@@ -103,9 +103,23 @@ def list_open_invoice_ids(session: Session) -> list[uuid.UUID]:
 
 
 def record_reminder(
-    session: Session, invoice_id: uuid.UUID, kind: ReminderKind, sent_on: date
+    session: Session,
+    invoice_id: uuid.UUID,
+    kind: ReminderKind,
+    sent_on: date,
+    *,
+    rule_code: str | None = None,
+    rule_label: str | None = None,
 ) -> None:
-    session.add(Reminder(invoice_id=invoice_id, kind=kind, sent_on=sent_on))
+    session.add(
+        Reminder(
+            invoice_id=invoice_id,
+            kind=kind,
+            sent_on=sent_on,
+            rule_code=rule_code,
+            rule_label=rule_label,
+        )
+    )
     session.flush()
 
 
