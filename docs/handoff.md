@@ -84,9 +84,9 @@ Date gotcha: if the skip lands in the 3-working-day pre-deadline window you get 
    - `ADMIN_API_TOKEN`: any long random string.
    - `DEMO_MODE=true`, and `EMAIL_SENDER=log` (safest for the video) or Postmark (`POSTMARK_SERVER_TOKEN` + confirmed sender + `EMAIL_FROM_*` / `REPLY_TO_DOMAIN` / `COMPANY_NAME`). A new Postmark account may only send to its own domain until approved, so check that.
    - The Stripe webhook endpoint must use the API version the installed `stripe` SDK pins (`2026-09-30.endive`).
-2. **Run the two opt-in live checks** once the keys are in (they cost money; confirm first):
-   - `uv run pytest -m live`: Claude extraction on `tests/fixtures/policy_sample.txt` (expects max reminders 3, not the injected 50) and the Jev classifier.
-   - `uv run collection-agent eval-classifier`: Jev accuracy, date accuracy, option-order flips.
+2. **Live checks (15 Oct):**
+   - **Claude extraction: PASSED** on `tests/fixtures/policy_sample.txt`. All six fields came from the document with verbatim quotes, the injected "max reminders 50" line was ignored, and 9 soft-guidance items were found. It was run through a scratch script, because the test guard strips keys from pytest, so `pytest -m live` can't see them. Fixing the live tests so they read keys explicitly is a small follow-up.
+   - **Jev eval: BLOCKED.** Every call returned **HTTP 402 Payment Required** from TypeSafe. The user needs to add billing or credits in the TypeSafe console, then re-run `uv run collection-agent eval-classifier` with `.env` loaded. Follow-up: the eval should stop on the first 402/401 instead of trying all 47.
 3. **Full demo rehearsal** with the real services: approve the policy, then `demo reset` between takes. Replace the hand-written Stripe fixtures in `tests/fixtures/stripe/` with real `stripe listen` captures.
 4. After the demo:
    - choose hosting for the daily job (proposed: weekdays 08:00 UK);
