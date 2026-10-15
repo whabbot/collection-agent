@@ -33,6 +33,10 @@ class InvoiceNotFoundError(LookupError):
     pass
 
 
+class InvoiceNotSentError(LookupError):
+    pass
+
+
 class NoApprovedPolicyError(LookupError):
     pass
 
@@ -52,6 +56,8 @@ def load_decision_inputs(session: Session, invoice_id: uuid.UUID) -> DecisionInp
     inv = session.get(Invoice, invoice_id)
     if inv is None:
         raise InvoiceNotFoundError(f"invoice {invoice_id} does not exist")
+    if inv.sent_on is None:
+        raise InvoiceNotSentError(f"invoice {invoice_id} has not been sent yet")
 
     reminder_rows = session.scalars(
         select(Reminder).where(Reminder.invoice_id == invoice_id).order_by(Reminder.sent_on)
@@ -67,6 +73,7 @@ def load_decision_inputs(session: Session, invoice_id: uuid.UUID) -> DecisionInp
             status=inv.status,
             state=inv.state,
             sent_on=inv.sent_on,
+            due_on=inv.due_on,
             paused_until=inv.paused_until,
             promised_date=inv.promised_date,
         ),
@@ -85,7 +92,11 @@ def list_open_invoice_ids(session: Session) -> list[uuid.UUID]:
     return list(
         session.scalars(
             select(Invoice.id)
-            .where(Invoice.status == InvoiceStatus.OPEN, Invoice.state == InvoiceState.ACTIVE)
+            .where(
+                Invoice.status == InvoiceStatus.OPEN,
+                Invoice.state == InvoiceState.ACTIVE,
+                Invoice.sent_on.is_not(None),
+            )
             .order_by(Invoice.sent_on, Invoice.id)
         )
     )

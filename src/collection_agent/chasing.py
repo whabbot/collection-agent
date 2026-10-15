@@ -43,6 +43,7 @@ class InvoiceSnapshot(BaseModel):
     status: InvoiceStatus
     state: InvoiceState
     sent_on: date
+    due_on: date
     paused_until: date | None = None
     promised_date: date | None = None
 
@@ -86,7 +87,7 @@ def decide_next_action(
     if inv.paused_until is not None and today < inv.paused_until:
         return None
 
-    clear_by = policy.clearance_deadline(inv.sent_on, cal)
+    clear_by = inv.due_on  # fixed at invoice creation; never re-derived from the policy
     last_contact = max(
         [inv.sent_on, *(r.sent_on for r in reminders), *(r.received_on for r in replies)]
     )

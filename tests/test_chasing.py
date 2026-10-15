@@ -24,16 +24,20 @@ POLICY = ChasePolicy()
 def inv(
     sent_on: date,
     *,
+    due_on: date | None = None,
     status: InvoiceStatus = InvoiceStatus.OPEN,
     state: InvoiceState = InvoiceState.ACTIVE,
     paused_until: date | None = None,
     promised_date: date | None = None,
 ) -> InvoiceSnapshot:
+    # Default: what the policy computed from sent_on before due_on was stored, so every
+    # scenario keeps its dates. Pass due_on to pin it explicitly.
     return InvoiceSnapshot(
         id="inv_1",
         status=status,
         state=state,
         sent_on=sent_on,
+        due_on=due_on if due_on is not None else POLICY.clearance_deadline(sent_on, CAL),
         paused_until=paused_until,
         promised_date=promised_date,
     )
@@ -248,3 +252,20 @@ def test_order_independence() -> None:
         rng.shuffle(rp2)
         assert decide(i, date(2026, 10, 15), r2, rp2) == expected
         assert decide(i, date(2026, 10, 14), r2, rp2) is None
+
+
+def test_clear_by_follows_stored_due_on_not_the_policy() -> None:
+    # Policy would give Mon 16 Nov for an invoice sent Thu 29 Oct. The stored due date is
+    # Fri 20 Nov (e.g. the approval queue delayed the email), so the pre-deadline window is
+    # Tue 17 Nov..Fri 20 Nov and nothing fires on 11 Nov.
+    sent = date(2026, 10, 29)
+    assert POLICY.clearance_deadline(sent, CAL) == date(2026, 11, 16)
+    i = inv(sent, due_on=date(2026, 11, 20))
+    r = [rem(date(2026, 11, 10))]  # 7-day timer runs to 17 Nov
+    assert decide(i, date(2026, 11, 11), r) is None
+    assert decide(i, date(2026, 11, 16), r) is None
+    assert decide(i, date(2026, 11, 17), r) is Action.REMIND_PRE_DEADLINE
+    # Past the stored deadline the window is closed, so only the 7-day timer remains.
+    assert (
+        decide(i, date(2026, 11, 23), [rem(date(2026, 11, 17), ReminderKind.PRE_DEADLINE)]) is None
+    )

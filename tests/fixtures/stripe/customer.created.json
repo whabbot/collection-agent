@@ -1,0 +1,21 @@
+{
+  "id": "evt_fixture_cust",
+  "object": "event",
+  "api_version": "2026-09-30.endive",
+  "created": 1792000000,
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "customer.created",
+  "data": {
+    "object": {
+      "id": "cus_fixture_1",
+      "object": "customer",
+      "email": "ap@acme.example",
+      "name": "Acme Ltd"
+    }
+  }
+}

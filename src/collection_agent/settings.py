@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    admin_api_token: str | None = None
 
 
 @lru_cache

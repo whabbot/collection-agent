@@ -1,29 +1,14 @@
 """FastAPI application factory."""
 
-from collections.abc import Iterator
-from functools import lru_cache
-from typing import Annotated
-
-from fastapi import Depends, FastAPI, Response
+from fastapi import FastAPI, Response
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, sessionmaker
 
-from collection_agent.db.engine import make_engine, make_session_factory
-from collection_agent.settings import get_settings
+from collection_agent.deps import SessionDep, get_session
+from collection_agent.invoices_api import router as invoices_router
+from collection_agent.webhooks_api import router as webhooks_router
 
-
-@lru_cache
-def _session_factory() -> sessionmaker[Session]:
-    return make_session_factory(make_engine(get_settings().database_url))
-
-
-def get_session() -> Iterator[Session]:
-    with _session_factory()() as session:
-        yield session
-
-
-SessionDep = Annotated[Session, Depends(get_session)]
+__all__ = ["app", "create_app", "get_session"]
 
 
 def create_app() -> FastAPI:
@@ -38,6 +23,8 @@ def create_app() -> FastAPI:
             return {"status": "db_unavailable"}
         return {"status": "ok"}
 
+    app.include_router(invoices_router)
+    app.include_router(webhooks_router)
     return app
 
 

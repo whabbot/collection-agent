@@ -1,0 +1,29 @@
+{
+  "id": "evt_fixture_paid",
+  "object": "event",
+  "api_version": "2026-09-30.endive",
+  "created": 1792000000,
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "invoice.paid",
+  "data": {
+    "object": {
+      "id": "in_fixture_1",
+      "object": "invoice",
+      "status": "paid",
+      "customer": "cus_fixture_1",
+      "collection_method": "send_invoice",
+      "currency": "gbp",
+      "amount_due": 250000,
+      "metadata": {
+        "reference": "INV-FIXTURE-1"
+      },
+      "hosted_invoice_url": "https://invoice.stripe.test/i/in_fixture_1",
+      "paid": true
+    }
+  }
+}

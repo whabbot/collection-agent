@@ -32,6 +32,7 @@ Policies (when to follow up, e.g. after 1 week of no response; company rules, e.
 - [x] Cognee key in `~/.cognee/.env` verified working (200 on `/api/v1/datasets/`, 15 Oct)
 - [x] **Slice 1 built** and committed to `main` (spec: `docs/plans/slice-1-chase-policy.md`): uv + Python 3.14 skeleton, `WorkingCalendar`/`uk_calendar`, `ChasePolicy`, `decide_next_action` + 56 tests; pytest, ruff, ruff format, mypy strict all pass
 - [x] **Slice 2 built** and committed to `main` (spec: `docs/plans/slice-2-service-and-db.md`): FastAPI app with `/healthz`, Postgres 18 via `compose.yaml` (localhost:55432), SQLAlchemy 2 models, Alembic initial migration, repository layer mapping rows to the slice-1 models; 88 tests (58 without the DB)
+- [x] **Slice 3 built** and committed to `main` (spec: `docs/plans/slice-3-stripe.md`): `POST /invoices` (bearer `ADMIN_API_TOKEN`; Stripe customer + finalized invoice, `auto_advance=false`, idempotency keys from `reference`) and `POST /webhooks/stripe` (signature check, event dedupe, paid/void/uncollectible). Stripe faked in tests; fixtures are hand-written. The stored `invoices.due_on` is now the single deadline `decide_next_action` uses
 - [ ] Confirm remaining proposed defaults (email provider, hosting, scheduler, promise-date limit, reply routing, taste)
 - [ ] Collect inputs: policy docs, sample contract, example chase emails, sample customer replies
 - [ ] Stripe test-mode keys + webhook secret
@@ -44,9 +45,16 @@ The main session orchestrates: it writes a spec in `docs/plans/`, then hands the
 
 ## Next steps
 
-1. Slice 3: Stripe — `POST /invoices` (create Stripe customer + invoice, store it) and `POST /webhooks/stripe` (signature check; `invoice.paid` / `payment_failed` / `overdue` → update status). Build against recorded webhook fixtures; no live Stripe calls in tests.
-2. Then: daily scheduler (`list_open_invoice_ids` → `load_decision_inputs` → `decide_next_action` → draft → approval queue). Build the calendar with `uk_calendar([today.year, today.year + 1])`, because deadlines cross into January. Seed and approve the first `ChasePolicy` before it runs; `get_approved_policy` raises if none is approved.
+1. **Email slice:** send the first invoice email (hosted invoice link plus contract PDF) and set `sent_on`. Postmark is still only a proposed default, so confirm the provider first. Drafts go to the approval queue.
+2. **Daily scheduler:** `list_open_invoice_ids` → `load_decision_inputs` → `decide_next_action` → draft → approval queue. Build the calendar with `uk_calendar([today.year, today.year + 1])`. Seed and approve the first `ChasePolicy` first. **Before sending any reminder, re-check the invoice's status in Stripe.** That's the safety net if an `invoice.paid` webhook was recorded before our invoice row existed.
 3. Reply classifier with synthetic test cases (**use Jev**, decided; read `docs/jev.md` first; at the start of that step, tell the user to put their Jev key in `.env` as `TYPESAFE_API_KEY`), then the approval queue.
 4. When policy docs arrive: load them into the Cognee `policies` dataset and test recall before deciding how much to extract into typed config.
-5. Open point from slice 1: should a contract-specific due date override the policy deadline? Currently the policy deadline is the only one.
-6. Housekeeping: Starlette warns that `TestClient` via `httpx` is deprecated (suggests `httpx2`). Switch when convenient.
+5. First live Stripe run: needs a sandbox, a restricted key and a webhook endpoint (see `setup-and-inputs.md`). Replace the hand-written fixtures in `tests/fixtures/stripe/` with real `stripe listen` captures.
+
+## Open points
+
+- **Deadline month when sending is delayed:** `due_on` is fixed at invoice creation (15th of the month after creation). If approval delays the first email past a month end, should the deadline follow the creation month (current behaviour) or the sent month?
+- **Contract-specific due dates:** `due_on` is now the single deadline, so a contract date can override it at creation once we want that.
+- **Customers by email:** two concurrent first invoices for the same new email can create two Stripe customers. There's no unique constraint on email, because different companies might share an AP inbox. Revisit if it bites.
+- **Multi-currency:** a Stripe customer is single-currency. Invoicing an existing customer in a new currency will fail with 502.
+- Housekeeping: Starlette warns that `TestClient` via `httpx` is deprecated (suggests `httpx2`).

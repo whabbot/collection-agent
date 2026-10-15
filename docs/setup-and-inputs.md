@@ -9,6 +9,7 @@ Environment variables the service will need:
 ```
 STRIPE_SECRET_KEY=          # test mode first (sk_test_...)
 STRIPE_WEBHOOK_SECRET=
+ADMIN_API_TOKEN=             # bearer token for internal endpoints (POST /invoices)
 POSTMARK_SERVER_TOKEN=      # or chosen provider
 ANTHROPIC_API_KEY=
 TYPESAFE_API_KEY=           # Jev reply classifier (name the SDK reads)
@@ -56,7 +57,7 @@ curl -sS -H "X-Api-Key: $COGNEE_API_KEY" "$COGNEE_BASE_URL/api/v1/datasets/"
 |---|---|---|
 | Cognee Cloud | Tenant + API key | Done (rotate key) |
 | GitHub | New repo; attach it to the session | Needed |
-| Stripe | Test-mode secret key, webhook signing secret; built-in reminder emails off; Automations for `invoice.overdue` | Needed |
+| Stripe | A **sandbox** (not the shared test mode) with a **restricted key** (`rk_…`) in `STRIPE_SECRET_KEY`; a webhook endpoint created on API version **the API version the installed `stripe` SDK pins (`2026-09-30.endive` as of Oct 2026)** (so payloads match the test fixtures) and its signing secret in `STRIPE_WEBHOOK_SECRET`; built-in reminder emails off. Invoices are created with `auto_advance=false`, so Stripe doesn't email or remind | Needed |
 | Email domain | Subdomain (e.g. `billing.<domain>`) with SPF, DKIM, DMARC, plus MX for inbound | Needed |
 | Email provider | Postmark (or chosen) account, server token, inbound webhook URL | Needed |
 | Anthropic API | API key | Needed |

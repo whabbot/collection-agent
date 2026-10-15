@@ -16,6 +16,7 @@ from collection_agent.chasing import (
 from collection_agent.db.models import ChasePolicyRow, InboundMessage, PolicyStatus
 from collection_agent.db.repository import (
     InvoiceNotFoundError,
+    InvoiceNotSentError,
     NoApprovedPolicyError,
     PolicyStateError,
     approve_policy,
@@ -61,6 +62,7 @@ def test_load_decision_inputs_maps_all_fields(session: Session) -> None:
     inv = make_invoice(
         session,
         sent_on=date(2026, 10, 1),
+        due_on=date(2026, 11, 20),
         paused_until=date(2026, 10, 9),
         promised_date=date(2026, 10, 12),
         state=InvoiceState.ACTIVE,
@@ -75,6 +77,7 @@ def test_load_decision_inputs_maps_all_fields(session: Session) -> None:
     assert got.invoice.status is InvoiceStatus.OPEN
     assert got.invoice.state is InvoiceState.ACTIVE
     assert got.invoice.sent_on == date(2026, 10, 1)
+    assert got.invoice.due_on == date(2026, 11, 20)
     assert got.invoice.paused_until == date(2026, 10, 9)
     assert got.invoice.promised_date == date(2026, 10, 12)
     assert [(r.kind, r.sent_on) for r in got.reminders] == [
@@ -114,6 +117,12 @@ def test_load_decision_inputs_unknown_invoice_raises(session: Session) -> None:
         load_decision_inputs(session, uuid.uuid4())
 
 
+def test_load_decision_inputs_unsent_invoice_raises(session: Session) -> None:
+    inv = make_invoice(session, sent_on=None)
+    with pytest.raises(InvoiceNotSentError, match="not been sent"):
+        load_decision_inputs(session, inv.id)
+
+
 # --- list_open_invoice_ids --------------------------------------------------
 
 
@@ -125,6 +134,12 @@ def test_list_open_invoice_ids_only_open_and_active(session: Session) -> None:
     make_invoice(session, state=InvoiceState.WITH_HUMAN)
     make_invoice(session, state=InvoiceState.ESCALATED)
     assert list_open_invoice_ids(session) == [open_inv.id]
+
+
+def test_list_open_invoice_ids_excludes_unsent(session: Session) -> None:
+    sent = make_invoice(session)
+    make_invoice(session, sent_on=None)
+    assert list_open_invoice_ids(session) == [sent.id]
 
 
 # --- record_inbound_message -------------------------------------------------
