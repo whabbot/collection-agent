@@ -90,7 +90,19 @@ Date gotcha: if the skip lands in the 3-working-day pre-deadline window you get 
    - **Jev eval: BLOCKED.** TypeSafe returns 402 "no available API credits" even after the user added billing. The key's organisation probably differs from the billed one, or the credits haven't arrived yet. Retry with `uv run collection-agent eval-classifier` once credits show.
    - **Slice 10, Claude stand-in classifier** (spec: `docs/plans/slice-10-claude-classifier.md`): `CLASSIFIER=jev|claude`, default `jev`. Live eval with Claude: **46/47 intents, 13/13 dates, 0/5 option-order flips, all 5 injection cases correct.** The one miss is `paid-5` (expected `other`, got `already_paid`); it's safe because routing checks Stripe before marking anything paid. **For the demo, the user sets `CLASSIFIER=claude` in `.env`** until Jev has credits.
    - Live tests now read `LIVE_ANTHROPIC_API_KEY` / `LIVE_TYPESAFE_API_KEY`, because the test guard strips normal keys. The eval stops on the first 401/402/403.
-3. **Full demo rehearsal** with the real services: approve the policy, then `demo reset` between takes. Replace the hand-written Stripe fixtures in `tests/fixtures/stripe/` with real `stripe listen` captures.
+3. **Demo rehearsal (15 Oct, ~21:20 UK), real services, `EMAIL_SENDER=log`, `CLASSIFIER=claude`.**
+   - **Worked:** policy → rule cards (5/5 from the document, 9 soft-guidance items) → approve. Sandbox invoice £1,200, due Mon 16 Nov 2026, with contract → invoice email approved/sent → Skip 7 days drafted a reminder tagged "No response for 7 days (last contact Thursday 1 October 2026)" → approved → customer reply "we'll pay on the 12th" → promise accepted, paused until Wed 14 Oct, acknowledgement drafted, approved, sent.
+   - **Fixed during the rehearsal (pushed):**
+     - day-only dates ("the 12th") were going to a person; they now mean the next 12th on or after today;
+     - the app's Claude calls now use `claude-sonnet-5-5` at low effort (user decision);
+     - the empty invoice header is hidden until an invoice is selected.
+   - **Payment:** the invoice is **paid in Stripe** (test mode, checked with the app's key), but the app was never told. **The Stripe CLI is logged into a different sandbox ("Wail sandbox") from the one `STRIPE_SECRET_KEY` belongs to**, so `stripe listen` forwarded nothing.
+     - Fix: `stripe login` into the key's sandbox.
+     - Run `stripe listen --events invoice.paid,invoice.voided,invoice.marked_uncollectible,invoice.payment_failed,invoice.overdue --forward-to localhost:8000/webhooks/stripe`, put its `whsec_…` in `STRIPE_WEBHOOK_SECRET`, and restart the app.
+     - Then resend the `invoice.paid` event (`stripe events resend <evt_id>`), or pay a fresh invoice.
+   - An older `stripe listen` process (not started by this session) was also running with a shorter event list. Stop it if it's yours.
+   - **Runbook corrections:** `stripe listen` needs `--events …` (the CLI refuses to start without it), and the CLI login expires after a few hours. Before recording, run `demo reset` and set the clock back to 2026-10-01.
+   - **Demo email identity:** placeholders added to `.env` (Accounts Team / Acme Co / `billing@acme.example` / `billing.acme.example`).
 4. After the demo:
    - choose hosting for the daily job (proposed: weekdays 08:00 UK);
    - Claude drafting of reminders once tone examples exist;
