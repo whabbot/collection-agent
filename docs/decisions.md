@@ -12,6 +12,10 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 | Chasing | Agent chases unpaid invoices according to the contract and company policy |
 | Inbound | Agent listens to customer replies to chase emails and responds |
 | Policy examples given | Follow up after **1 week of no response**; payments should **clear by the 15th of the month** |
+| Stack | Python 3.14 (latest stable) + FastAPI, Postgres, SQLAlchemy 2.x, Pydantic 2.x, managed with `uv`. Latest compatible versions of everything (decided 15 Oct 2026) |
+| Repo | `whabbot/collection-agent` |
+| Clearance deadline | 15th of the month **following** the month the invoice was sent; rolls to the next working day if it falls on a weekend or bank holiday |
+| `ChasePolicy` defaults | 7 days no response; pre-deadline reminder 3 working days before the deadline; escalate after 3 reminders; 2 business days grace after a missed promise; no sends on weekends or England & Wales bank holidays (decided 15 Oct 2026) |
 
 ## Design decisions (proposed in the design, adopted as the working approach)
 
@@ -25,12 +29,10 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 
 ## Proposed defaults — awaiting confirmation
 
-### Stack (BLOCKING before scaffolding)
+### Stack (remaining items)
 
 | Item | Proposed |
 |---|---|
-| Language / framework | Python 3.12 + FastAPI, Postgres, SQLAlchemy |
-| Repo | New GitHub repo — **name needed** (`owner/repo`) |
 | Email provider (send + inbound) | Postmark |
 | LLM | Claude via Anthropic API |
 | Hosting | Render / Railway / Fly (needs a persistent worker + daily cron) |
@@ -38,16 +40,12 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 
 ### Policy numbers
 
+Timing numbers are decided (see above). Still proposed:
+
 | Rule | Proposed |
 |---|---|
-| Days of no response before chasing | 7 |
-| Clearance deadline | 15th of the month — **which month? (sent month or following)** |
-| Pre-deadline reminder buffer | 3 days before the deadline |
-| Max reminders before human escalation | 3 |
 | Latest acceptable promise-to-pay date | No later than the clearance deadline |
-| Grace after a missed promise | 2 business days |
 | Agent can agree extensions / payment plans | No — always human |
-| Weekends & bank holidays | No sends; deadlines falling on them roll to next working day |
 
 ### Reply handling routing
 

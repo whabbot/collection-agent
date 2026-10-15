@@ -25,4 +25,12 @@ Setup, credentials, accounts and outstanding inputs: `docs/setup-and-inputs.md`.
 
 ## Commands
 
-<!-- Fill in once the repo is scaffolded: install, run, test, lint. -->
+Python 3.14 via `uv` (system `python3` is 3.9: always go through `uv run`).
+
+- Install: `uv sync`
+- Test: `uv run pytest`
+- Lint: `uv run ruff check .`
+- Format check: `uv run ruff format --check .` (apply with `uv run ruff format .`)
+- Type check (strict): `uv run mypy src`
+
+All four must pass before a slice is done.

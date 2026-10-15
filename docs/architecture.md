@@ -101,6 +101,7 @@ class Intent(str, Enum):
     OUT_OF_OFFICE = "out_of_office"
     OTHER = "other"
 
+
 class ReplyClassification(BaseModel):
     intent: Intent
     confidence: float
