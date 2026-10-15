@@ -15,6 +15,7 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 | Stack | Python 3.14 (latest stable) + FastAPI, Postgres, SQLAlchemy 2.x, Pydantic 2.x, managed with `uv`. Latest compatible versions of everything (decided 15 Oct 2026) |
 | Repo | `whabbot/collection-agent` |
 | Clearance deadline | 15th of the month **following** the month the invoice was sent; rolls to the next working day if it falls on a weekend or bank holiday |
+| Email provider | **Postmark** for sending and inbound (decided 15 Oct 2026) |
 | Reply classifier | **Jev** (TypeSafe): typed decisions with calibrated probabilities. Use it directly; no comparison against other models. Classification only; drafting still needs a generative LLM. Key in `TYPESAFE_API_KEY` (the SDK default). No `summary` field in v1: Jev can't generate text, and reviewers read the email itself. See `docs/jev.md` (decided 15 Oct 2026) |
 | `ChasePolicy` defaults | 7 days no response; pre-deadline reminder 3 working days before the deadline; escalate after 3 reminders; 2 business days grace after a missed promise; no sends on weekends or England & Wales bank holidays (decided 15 Oct 2026) |
 
@@ -34,7 +35,6 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 
 | Item | Proposed |
 |---|---|
-| Email provider (send + inbound) | Postmark |
 | LLM (drafting emails, contract answers) | Claude via Anthropic API |
 | Hosting | Render / Railway / Fly (needs a persistent worker + daily cron) |
 | Scheduler | Daily job, 08:00 UK time, weekdays only |

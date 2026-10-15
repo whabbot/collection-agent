@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from collection_agent.app import create_app
-from collection_agent.deps import get_session, get_stripe_gateway, get_today
+from collection_agent.deps import get_email_sender, get_session, get_stripe_gateway, get_today
+from collection_agent.email_sender import EmailSender
 from collection_agent.settings import Settings, get_settings
 from collection_agent.stripe_gateway import StripeGateway
 
@@ -29,6 +30,12 @@ def make_settings(**overrides: str | None) -> Settings:
         "admin_api_token": ADMIN_TOKEN,
         "stripe_secret_key": "sk_test_fake_not_real",
         "stripe_webhook_secret": "whsec_test_fake",
+        "postmark_server_token": "pm_test_fake_not_real",
+        "postmark_message_stream": "outbound",
+        "email_from_address": "billing@billing.example.test",
+        "email_from_name": "Acme Billing",
+        "reply_to_domain": "billing.example.test",
+        "company_name": "Acme Co",
     }
     return Settings.model_construct(**{**base, **overrides})
 
@@ -37,6 +44,7 @@ def make_client(
     *,
     session: Session | None = None,
     gateway: StripeGateway | None = None,
+    email_sender: EmailSender | None = None,
     settings: Settings | None = None,
     today: date = date(2026, 10, 15),
 ) -> TestClient:
@@ -50,4 +58,6 @@ def make_client(
     app.dependency_overrides[get_today] = lambda: today
     if gateway is not None:
         app.dependency_overrides[get_stripe_gateway] = lambda: gateway
+    if email_sender is not None:
+        app.dependency_overrides[get_email_sender] = lambda: email_sender
     return TestClient(app)

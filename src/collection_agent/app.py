@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from collection_agent.deps import SessionDep, get_session
+from collection_agent.email_api import router as email_router
 from collection_agent.invoices_api import router as invoices_router
 from collection_agent.webhooks_api import router as webhooks_router
 
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
 
     app.include_router(invoices_router)
     app.include_router(webhooks_router)
+    app.include_router(email_router)
     return app
 
 

@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     func,
@@ -28,6 +29,20 @@ class PolicyStatus(StrEnum):
     DRAFT = "draft"
     APPROVED = "approved"
     SUPERSEDED = "superseded"
+
+
+class OutboundStatus(StrEnum):
+    PENDING_APPROVAL = "pending_approval"
+    SENDING = "sending"
+    SENT = "sent"
+    REJECTED = "rejected"
+    FAILED = "failed"
+
+
+class OutboundKind(StrEnum):
+    """Extendable: add a value here, to the CHECK constraint and in a new migration."""
+
+    INVOICE = "invoice"
 
 
 def _pg_enum[E: StrEnum](enum_cls: type[E], name: str) -> Enum:
@@ -153,3 +168,58 @@ class StripeEvent(Base):
     type: Mapped[str] = mapped_column(String)
     stripe_object_id: Mapped[str | None] = mapped_column(String)
     livemode: Mapped[bool] = mapped_column(Boolean)
+
+
+class Contract(Base):
+    """The one current contract PDF for an invoice."""
+
+    __tablename__ = "contracts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    invoice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("invoices.id"), unique=True)
+    filename: Mapped[str] = mapped_column(String)
+    content: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+
+
+class OutboundEmail(Base):
+    """The outbox: every email waits here for a human to approve it before it is sent."""
+
+    __tablename__ = "outbound_emails"
+    __table_args__ = (
+        CheckConstraint("kind IN ('invoice')", name="kind_known"),
+        Index("ix_outbound_emails_status", "status"),
+        # At most one live invoice email per invoice: the guard against sending it twice.
+        Index(
+            "uq_outbound_emails_one_live_invoice_email",
+            "invoice_id",
+            unique=True,
+            postgresql_where=text("kind = 'invoice' AND status NOT IN ('rejected', 'failed')"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    invoice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("invoices.id"))
+    kind: Mapped[str] = mapped_column(String)
+    to_address: Mapped[str] = mapped_column(String)
+    from_address: Mapped[str] = mapped_column(String)
+    from_name: Mapped[str] = mapped_column(String)
+    reply_to: Mapped[str] = mapped_column(String)
+    subject: Mapped[str] = mapped_column(String)
+    body_text: Mapped[str] = mapped_column(Text)
+    attach_contract: Mapped[bool] = mapped_column(Boolean)
+    status: Mapped[OutboundStatus] = mapped_column(_pg_enum(OutboundStatus, "outbound_status"))
+    approved_by: Mapped[str | None] = mapped_column(String)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejected_by: Mapped[str | None] = mapped_column(String)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reject_reason: Mapped[str | None] = mapped_column(Text)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provider_message_id: Mapped[str | None] = mapped_column(String)
+    error: Mapped[str | None] = mapped_column(Text)

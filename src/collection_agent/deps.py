@@ -2,6 +2,7 @@
 
 import secrets
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import date, datetime
 from functools import lru_cache
 from typing import Annotated
@@ -11,6 +12,7 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session, sessionmaker
 
 from collection_agent.db.engine import make_engine, make_session_factory
+from collection_agent.email_sender import EmailSender, PostmarkSender
 from collection_agent.settings import Settings, get_settings
 from collection_agent.stripe_gateway import LiveStripeGateway, StripeGateway
 
@@ -66,3 +68,44 @@ def get_today() -> date:
 
 
 TodayDep = Annotated[date, Depends(get_today)]
+
+
+@lru_cache
+def _postmark_sender(token: str, stream: str) -> PostmarkSender:
+    return PostmarkSender(token, stream)
+
+
+def get_email_sender(settings: SettingsDep) -> EmailSender:
+    if not settings.postmark_server_token:
+        raise HTTPException(status_code=503, detail={"error": "postmark_not_configured"})
+    return _postmark_sender(settings.postmark_server_token, settings.postmark_message_stream)
+
+
+EmailSenderDep = Annotated[EmailSender, Depends(get_email_sender)]
+
+
+@dataclass(frozen=True)
+class EmailIdentity:
+    from_address: str
+    from_name: str
+    reply_to_domain: str
+    company_name: str
+
+
+def get_email_identity(settings: SettingsDep) -> EmailIdentity:
+    if not (
+        settings.email_from_address
+        and settings.email_from_name
+        and settings.reply_to_domain
+        and settings.company_name
+    ):
+        raise HTTPException(status_code=503, detail={"error": "email_not_configured"})
+    return EmailIdentity(
+        settings.email_from_address,
+        settings.email_from_name,
+        settings.reply_to_domain,
+        settings.company_name,
+    )
+
+
+EmailIdentityDep = Annotated[EmailIdentity, Depends(get_email_identity)]

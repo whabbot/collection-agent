@@ -25,3 +25,31 @@ def test_stripe_and_admin_settings_read_from_env(monkeypatch: pytest.MonkeyPatch
     assert s.stripe_secret_key == "sk_test_fake_not_real"
     assert s.stripe_webhook_secret == "whsec_test_fake"
     assert s.admin_api_token == "admin_test_fake"
+
+
+def test_email_settings_optional_with_stream_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@localhost/db")
+    for name in (
+        "POSTMARK_SERVER_TOKEN",
+        "POSTMARK_MESSAGE_STREAM",
+        "EMAIL_FROM_ADDRESS",
+        "EMAIL_FROM_NAME",
+        "REPLY_TO_DOMAIN",
+        "COMPANY_NAME",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert (s.postmark_server_token, s.email_from_address, s.email_from_name) == (None,) * 3
+    assert (s.reply_to_domain, s.company_name) == (None, None)
+    assert s.postmark_message_stream == "outbound"
+
+
+def test_email_settings_read_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@localhost/db")
+    monkeypatch.setenv("POSTMARK_SERVER_TOKEN", "pm_test_fake_not_real")
+    monkeypatch.setenv("POSTMARK_MESSAGE_STREAM", "broadcast")
+    monkeypatch.setenv("COMPANY_NAME", "Acme Co")
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.postmark_server_token == "pm_test_fake_not_real"
+    assert s.postmark_message_stream == "broadcast"
+    assert s.company_name == "Acme Co"
