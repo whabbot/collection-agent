@@ -96,10 +96,11 @@ Date gotcha: if the skip lands in the 3-working-day pre-deadline window you get 
      - day-only dates ("the 12th") were going to a person; they now mean the next 12th on or after today;
      - the app's Claude calls now use `claude-sonnet-5-5` at low effort (user decision);
      - the empty invoice header is hidden until an invoice is selected.
-   - **Payment:** the invoice is **paid in Stripe** (test mode, checked with the app's key), but the app was never told. **The Stripe CLI is logged into a different sandbox ("Wail sandbox") from the one `STRIPE_SECRET_KEY` belongs to**, so `stripe listen` forwarded nothing.
-     - Fix: `stripe login` into the key's sandbox.
-     - Run `stripe listen --events invoice.paid,invoice.voided,invoice.marked_uncollectible,invoice.payment_failed,invoice.overdue --forward-to localhost:8000/webhooks/stripe`, put its `whsec_…` in `STRIPE_WEBHOOK_SECRET`, and restart the app.
-     - Then resend the `invoice.paid` event (`stripe events resend <evt_id>`), or pay a fresh invoice.
+   - **Payment, first attempt:** the payment went through in Stripe but never reached the app. The CLI was logged into "Wail sandbox", while `STRIPE_SECRET_KEY` came from the main "Wail" account's test mode. **Fixed:** the user switched `STRIPE_SECRET_KEY` to the Wail sandbox key (`acct_1UQtODF6Oq2hFOO3`). The app key, the CLI and `STRIPE_WEBHOOK_SECRET` now all match.
+   - **Second full run (~21:36, DEMO-REH-002): END TO END OK on Sonnet.** Paying with 4242 → `invoice.paid` forwarded by `stripe listen` → 200 → the timeline shows "Paid in Stripe" and the invoice pill shows PAID.
+   - **Notes:**
+     - in the browser pane the Pay link opened in the same tab, not a new one (check in a normal browser before recording);
+     - the full sandbox secret key is in use, and a restricted `rk_test_` key is recommended later.
    - An older `stripe listen` process (not started by this session) was also running with a shorter event list. Stop it if it's yours.
    - **Runbook corrections:** `stripe listen` needs `--events …` (the CLI refuses to start without it), and the CLI login expires after a few hours. Before recording, run `demo reset` and set the clock back to 2026-10-01.
    - **Demo email identity:** placeholders added to `.env` (Accounts Team / Acme Co / `billing@acme.example` / `billing.acme.example`).
