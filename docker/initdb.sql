@@ -1,0 +1,1 @@
+CREATE DATABASE collection_agent_test OWNER collection_agent;

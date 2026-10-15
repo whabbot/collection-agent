@@ -32,5 +32,9 @@ Python 3.14 via `uv` (system `python3` is 3.9: always go through `uv run`).
 - Lint: `uv run ruff check .`
 - Format check: `uv run ruff format --check .` (apply with `uv run ruff format .`)
 - Type check (strict): `uv run mypy src`
+- Start the local Postgres (port 55432): `docker compose up -d db`
+- Migrate the dev DB: `DATABASE_URL=postgresql+psycopg://collection_agent:collection_agent@localhost:55432/collection_agent uv run alembic upgrade head` (or put `DATABASE_URL` in `.env`)
+- Run the app: `uv run uvicorn collection_agent.app:app --reload` (`GET /healthz`)
+- Tests without the DB (slice-1 and non-DB tests): `uv run pytest -m "not db"`. DB tests fail, not skip, if the DB is down; they use `TEST_DATABASE_URL` (default: the compose `collection_agent_test` DB).
 
 All four must pass before a slice is done.

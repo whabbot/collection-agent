@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      # Throwaway dev-only credentials for the local container.
+      POSTGRES_USER: collection_agent
+      POSTGRES_PASSWORD: collection_agent
+      POSTGRES_DB: collection_agent
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql
+      - ./docker/initdb.sql:/docker-entrypoint-initdb.d/01-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U collection_agent -d collection_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db_data:

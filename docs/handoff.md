@@ -31,6 +31,7 @@ Policies (when to follow up, e.g. after 1 week of no response; company rules, e.
 - [x] GitHub repo: `whabbot/collection-agent`
 - [x] Cognee key in `~/.cognee/.env` verified working (200 on `/api/v1/datasets/`, 15 Oct)
 - [x] **Slice 1 built** and committed to `main` (spec: `docs/plans/slice-1-chase-policy.md`): uv + Python 3.14 skeleton, `WorkingCalendar`/`uk_calendar`, `ChasePolicy`, `decide_next_action` + 56 tests; pytest, ruff, ruff format, mypy strict all pass
+- [x] **Slice 2 built** and committed to `main` (spec: `docs/plans/slice-2-service-and-db.md`): FastAPI app with `/healthz`, Postgres 18 via `compose.yaml` (localhost:55432), SQLAlchemy 2 models, Alembic initial migration, repository layer mapping rows to the slice-1 models; 88 tests (58 without the DB)
 - [ ] Confirm remaining proposed defaults (email provider, hosting, scheduler, promise-date limit, reply routing, taste)
 - [ ] Collect inputs: policy docs, sample contract, example chase emails, sample customer replies
 - [ ] Stripe test-mode keys + webhook secret
@@ -43,7 +44,9 @@ The main session orchestrates: it writes a spec in `docs/plans/`, then hands the
 
 ## Next steps
 
-1. Slice 2: FastAPI + SQLAlchemy/Postgres skeleton, persisting invoices/reminders/replies and the approved `ChasePolicy`. When the scheduler is built, build the calendar with `uk_calendar([today.year, today.year + 1])` — deadlines cross into January.
-2. Then: Stripe webhook handler (recorded fixtures), reply classifier with synthetic test cases (**use Jev**, decided; at the start of that step, tell the user to put their Jev key in `.env` as `TYPESAFE_API_KEY`; read `docs/jev.md` first), approval queue.
-3. When policy docs arrive: load them into the Cognee `policies` dataset and test recall before deciding how much to extract into typed config.
-4. Open point from slice 1: should a contract-specific due date override the policy deadline? Currently the policy deadline is the only one.
+1. Slice 3: Stripe — `POST /invoices` (create Stripe customer + invoice, store it) and `POST /webhooks/stripe` (signature check; `invoice.paid` / `payment_failed` / `overdue` → update status). Build against recorded webhook fixtures; no live Stripe calls in tests.
+2. Then: daily scheduler (`list_open_invoice_ids` → `load_decision_inputs` → `decide_next_action` → draft → approval queue). Build the calendar with `uk_calendar([today.year, today.year + 1])`, because deadlines cross into January. Seed and approve the first `ChasePolicy` before it runs; `get_approved_policy` raises if none is approved.
+3. Reply classifier with synthetic test cases (**use Jev**, decided; read `docs/jev.md` first; at the start of that step, tell the user to put their Jev key in `.env` as `TYPESAFE_API_KEY`), then the approval queue.
+4. When policy docs arrive: load them into the Cognee `policies` dataset and test recall before deciding how much to extract into typed config.
+5. Open point from slice 1: should a contract-specific due date override the policy deadline? Currently the policy deadline is the only one.
+6. Housekeeping: Starlette warns that `TestClient` via `httpx` is deprecated (suggests `httpx2`). Switch when convenient.
