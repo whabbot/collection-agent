@@ -42,7 +42,7 @@ class FakeExtractor:
     def __init__(
         self, extraction: PolicyExtraction | None = None, error: Exception | None = None
     ) -> None:
-        self.model = "claude-opus-5-5"
+        self.model = "claude-sonnet-5-5"
         self._extraction = extraction or canned_extraction()
         self._error = error
         self.calls: list[str] = []

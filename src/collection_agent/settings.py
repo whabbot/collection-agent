@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     inbound_webhook_user: str | None = None
     inbound_webhook_password: str | None = None
     anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-opus-5-5"
+    anthropic_model: str = "claude-sonnet-5-5"
     cognee_base_url: str | None = None
     cognee_api_key: str | None = None
     cognee_policies_dataset: str = "policies"
@@ -51,7 +51,7 @@ class TypesafeSettings(BaseSettings):
     jev_model: str = "jev-1.13.0"
     classifier: Literal["jev", "claude"] = "jev"
     anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-opus-5-5"
+    anthropic_model: str = "claude-sonnet-5-5"
 
 
 @lru_cache

@@ -115,3 +115,4 @@ dialog form button { margin-top: 14px; }
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } .col { border-right: 0; border-bottom: 1px solid var(--line); } }
 @media (prefers-reduced-motion: no-preference) { .ev, .mail, .card { animation: rise 0.25s ease-out; } }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.inv-head[hidden] { display: none; }

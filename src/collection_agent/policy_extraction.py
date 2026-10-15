@@ -17,7 +17,7 @@ from collection_agent.policy import ChasePolicy
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = "claude-sonnet-5-5"
 MAX_TOKENS = 16000
 TIMEOUT_SECONDS = 180.0
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
@@ -132,7 +132,7 @@ class ClaudeExtractor:
             response = self._client.beta.messages.parse(
                 model=self.model,
                 max_tokens=MAX_TOKENS,
-                output_config={"effort": "medium"},
+                output_config={"effort": "low"},
                 system=SYSTEM,
                 messages=[
                     {

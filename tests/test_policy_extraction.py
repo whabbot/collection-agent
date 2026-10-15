@@ -191,7 +191,7 @@ def message_body(
         "id": "msg_test",
         "type": "message",
         "role": "assistant",
-        "model": "claude-opus-5-5",
+        "model": "claude-sonnet-5-5",
         "content": [{"type": "text", "text": payload}],
         "stop_reason": stop_reason,
         "stop_sequence": None,
@@ -212,7 +212,7 @@ def extractor_with(
         max_retries=0,
         http_client=anthropic.DefaultHttpxClient(transport=httpx2.MockTransport(handler)),
     )
-    return ClaudeExtractor(FAKE_KEY, "claude-opus-5-5", client=client)
+    return ClaudeExtractor(FAKE_KEY, "claude-sonnet-5-5", client=client)
 
 
 def test_request_shape() -> None:
@@ -226,9 +226,9 @@ def test_request_shape() -> None:
     assert request.headers["x-api-key"] == FAKE_KEY
     assert "server-side-fallback-2026-07-01" in request.headers["anthropic-beta"]
     body = json.loads(request.content)
-    assert body["model"] == "claude-opus-5-5"
+    assert body["model"] == "claude-sonnet-5-5"
     assert body["max_tokens"] == 16000
-    assert body["output_config"]["effort"] == "medium"
+    assert body["output_config"]["effort"] == "low"
     assert body["output_config"]["format"]["type"] == "json_schema"
     assert body["fallbacks"] == "default"
     assert body["system"] == SYSTEM

@@ -117,9 +117,27 @@ def test_invalid_calendar_date_is_none() -> None:
 
 def test_absolute_needs_both_month_and_day() -> None:
     assert assemble(parts(date_form="absolute", month="november")) is None
-    assert assemble(parts(date_form="absolute", day_of_month="12")) is None
     assert assemble(parts(date_form="absolute", month="smarch", day_of_month="12")) is None
     assert assemble(parts(date_form="absolute", month="november", day_of_month="x")) is None
+
+
+def test_day_only_uses_next_occurrence_on_or_after_today() -> None:
+    day12 = parts(date_form="absolute", day_of_month="12")
+    assert assemble(day12, date(2026, 10, 8)) == date(2026, 10, 12)
+    assert assemble(day12, date(2026, 10, 20)) == date(2026, 11, 12)
+    assert assemble(day12, date(2026, 10, 12)) == date(2026, 10, 12)
+    assert assemble(day12, date(2026, 12, 20)) == date(2027, 1, 12)
+
+
+def test_day_only_missing_from_next_month_is_none() -> None:
+    day31 = parts(date_form="absolute", day_of_month="31")
+    assert assemble(day31, date(2026, 11, 5)) is None  # November has no 31st
+    assert assemble(day31, date(2026, 10, 8)) == date(2026, 10, 31)
+    assert assemble(parts(date_form="absolute", day_of_month="0"), TODAY) is None
+
+
+def test_month_stated_still_works_with_day() -> None:
+    assert assemble(absolute("november", 12), date(2026, 10, 8)) == date(2026, 11, 12)
 
 
 def test_form_none_or_missing_or_unknown_is_none() -> None:

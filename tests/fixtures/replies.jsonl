@@ -15,6 +15,7 @@
 {"id": "promise-10", "text": "I'll pay by the end of the week.", "expected_intent": "promise_to_pay", "today": "2026-10-17", "expected_promised_date": "2026-10-23", "note": "Saturday: coming Friday"}
 {"id": "promise-11", "text": "We will pay by 3 January.", "expected_intent": "promise_to_pay", "today": "2026-12-20", "expected_promised_date": "2027-01-03", "note": "rolls over new year"}
 {"id": "promise-12", "text": "We'll pay this soon, don't worry.", "expected_intent": "other", "today": "2026-10-14", "expected_promised_date": null, "note": "no date given"}
+{"id": "promise-13", "text": "Thanks for the reminder - we'll pay on the 12th.", "expected_intent": "promise_to_pay", "today": "2026-10-08", "expected_promised_date": "2026-10-12"}
 {"id": "ext-1", "text": "Could we have until the end of next month to pay?", "expected_intent": "request_extension", "today": "2026-10-14"}
 {"id": "ext-2", "text": "Can you give us another two weeks please?", "expected_intent": "request_extension", "today": "2026-10-14"}
 {"id": "ext-3", "text": "Our finance director is away. Can we push the due date to the 30th?", "expected_intent": "request_extension", "today": "2026-10-14"}

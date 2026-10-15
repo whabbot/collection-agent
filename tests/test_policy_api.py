@@ -88,7 +88,7 @@ def test_happy_path_ingests_extracts_and_returns_exact_cards(session: Session) -
     assert len(doc.sha256) == 64
     extraction = session.scalars(select(PolicyExtraction)).one()
     assert extraction.policy_version == 1
-    assert extraction.model == "claude-opus-5-5"
+    assert extraction.model == "claude-sonnet-5-5"
     assert extraction.fields["max_reminders"]["source"] == "document"
 
 

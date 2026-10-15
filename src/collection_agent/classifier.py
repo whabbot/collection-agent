@@ -278,6 +278,8 @@ def assemble_promised_date(parts: Mapping[str, str], today: date) -> date | None
 
 
 def _absolute(month_name: str, day_text: str, today: date) -> date | None:
+    if month_name == "not_stated" and day_text.isdigit():
+        return _next_day_of_month(int(day_text), today)
     if month_name not in MONTHS or not day_text.isdigit():
         return None
     month, day = MONTHS.index(month_name) + 1, int(day_text)
@@ -288,6 +290,18 @@ def _absolute(month_name: str, day_text: str, today: date) -> date | None:
     except ValueError:
         return None  # e.g. 31 February
     return candidate
+
+
+def _next_day_of_month(day: int, today: date) -> date | None:
+    """Day with no month ("on the 12th"): this month if the day has not passed, else next month.
+    None if that month has no such day; never skips ahead to a later month."""
+    year, month = today.year, today.month
+    if day < today.day:
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
 
 
 def _relative(anchor: str, today: date) -> date | None:

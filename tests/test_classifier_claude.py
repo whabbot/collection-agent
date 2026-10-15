@@ -36,7 +36,7 @@ from tests.api_helpers import make_settings
 from tests.fake_classifier import FakeClassifier, make_classification
 
 FAKE_KEY = "sk-ant-test-fake-not-real"
-MODEL = "claude-opus-5-5"
+MODEL = "claude-sonnet-5-5"
 TODAY = date(2026, 10, 14)  # a Wednesday
 FACTS = ClassifierFacts(
     reference="INV-1001", amount="£1,200.00", due_on=date(2026, 11, 13), today=TODAY
