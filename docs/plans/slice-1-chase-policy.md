@@ -1,6 +1,6 @@
 # Slice 1 — project skeleton, `ChasePolicy`, `decide_next_action`
 
-Status: ready to build (15 Oct 2026). Branch: `slice-1-chase-policy`.
+Status: built and committed to `main` (15 Oct 2026).
 
 This spec **replaces** the `decide_next_action` sketch in `docs/architecture.md`. That sketch has known bugs (repeat pre-deadline reminders every day, escalation the day after the 3rd reminder, no-response clock ignores customer replies). Build to the rules below, not to the sketch.
 

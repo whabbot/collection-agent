@@ -29,7 +29,7 @@ Policies (when to follow up, e.g. after 1 week of no response; company rules, e.
 - [x] Stack, clearance month and `ChasePolicy` numbers confirmed (see `decisions.md` → Decided)
 - [x] GitHub repo: `whabbot/collection-agent`
 - [x] Cognee key in `~/.cognee/.env` verified working (200 on `/api/v1/datasets/`, 15 Oct)
-- [x] **Slice 1 built** on branch `slice-1-chase-policy` (spec: `docs/plans/slice-1-chase-policy.md`): uv + Python 3.14 skeleton, `WorkingCalendar`/`uk_calendar`, `ChasePolicy`, `decide_next_action` + 56 tests; pytest, ruff, ruff format, mypy strict all pass
+- [x] **Slice 1 built** and committed to `main` (spec: `docs/plans/slice-1-chase-policy.md`): uv + Python 3.14 skeleton, `WorkingCalendar`/`uk_calendar`, `ChasePolicy`, `decide_next_action` + 56 tests; pytest, ruff, ruff format, mypy strict all pass
 - [ ] Confirm remaining proposed defaults (email provider, hosting, scheduler, promise-date limit, reply routing, taste)
 - [ ] Collect inputs: policy docs, sample contract, example chase emails, sample customer replies
 - [ ] Stripe test-mode keys + webhook secret
@@ -38,12 +38,11 @@ Policies (when to follow up, e.g. after 1 week of no response; company rules, e.
 
 ## Working method
 
-The main session orchestrates: it writes a spec in `docs/plans/`, then hands the build to a coding subagent (**Sonnet, medium effort**), then re-runs the checks itself before reporting.
+The main session orchestrates: it writes a spec in `docs/plans/`, then hands the build to a coding subagent (**Sonnet, medium effort**), then re-runs the checks itself before reporting. Work is committed straight to `main` — no feature branches or PRs.
 
 ## Next steps
 
-1. Review and commit slice 1 (`slice-1-chase-policy`), open a PR into `main`.
-2. Slice 2: FastAPI + SQLAlchemy/Postgres skeleton, persisting invoices/reminders/replies and the approved `ChasePolicy`. When the scheduler is built, build the calendar with `uk_calendar([today.year, today.year + 1])` — deadlines cross into January.
-3. Then: Stripe webhook handler (recorded fixtures), reply classifier with synthetic test cases, approval queue.
-4. When policy docs arrive: load them into the Cognee `policies` dataset and test recall before deciding how much to extract into typed config.
-5. Open point from slice 1: should a contract-specific due date override the policy deadline? Currently the policy deadline is the only one.
+1. Slice 2: FastAPI + SQLAlchemy/Postgres skeleton, persisting invoices/reminders/replies and the approved `ChasePolicy`. When the scheduler is built, build the calendar with `uk_calendar([today.year, today.year + 1])` — deadlines cross into January.
+2. Then: Stripe webhook handler (recorded fixtures), reply classifier with synthetic test cases, approval queue.
+3. When policy docs arrive: load them into the Cognee `policies` dataset and test recall before deciding how much to extract into typed config.
+4. Open point from slice 1: should a contract-specific due date override the policy deadline? Currently the policy deadline is the only one.
