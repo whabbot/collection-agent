@@ -31,6 +31,7 @@ class OutgoingEmail:
     text_body: str
     attachments: tuple[Attachment, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
+    headers: tuple[tuple[str, str], ...] = ()  # extra headers, e.g. In-Reply-To / References
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,7 @@ class PostmarkSender:
         self._client = http_client or httpx.Client(timeout=TIMEOUT_SECONDS)
 
     def _payload(self, message: OutgoingEmail) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "From": formataddr((message.from_name, message.from_address)),
             "To": message.to,
             "ReplyTo": message.reply_to,
@@ -85,6 +86,9 @@ class PostmarkSender:
             "TrackOpens": False,  # keep the payment link untouched
             "TrackLinks": "None",
         }
+        if message.headers:
+            payload["Headers"] = [{"Name": n, "Value": v} for n, v in message.headers]
+        return payload
 
     def send(self, message: OutgoingEmail) -> SentEmail:
         try:

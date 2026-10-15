@@ -11,10 +11,13 @@ import logging
 import sys
 from collections.abc import Sequence
 from datetime import date
+from pathlib import Path
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
+from collection_agent.classifier import Intent, JevClassifier, ReplyClassifier
+from collection_agent.classifier_eval import DEFAULT_FIXTURES, load_cases, run_eval
 from collection_agent.daily import run_daily
 from collection_agent.db.engine import make_engine, make_session_factory
 from collection_agent.db.repository import (
@@ -31,7 +34,7 @@ from collection_agent.deps import (
     missing_identity_settings,
 )
 from collection_agent.policy import ChasePolicy
-from collection_agent.settings import Settings
+from collection_agent.settings import Settings, TypesafeSettings
 from collection_agent.stripe_gateway import LiveStripeGateway, StripeGateway
 
 OK = 0
@@ -56,6 +59,12 @@ def _build_parser() -> argparse.ArgumentParser:
     approve = psub.add_parser("approve", help="approve a draft policy version")
     approve.add_argument("--version", type=int, required=True)
     approve.add_argument("--by", required=True, help="who is approving")
+
+    ev = sub.add_parser(
+        "eval-classifier",
+        help="run the Jev classifier over the synthetic replies (needs TYPESAFE_API_KEY)",
+    )
+    ev.add_argument("--fixtures", type=Path, default=DEFAULT_FIXTURES, help="a .jsonl file")
     return parser
 
 
@@ -69,11 +78,15 @@ def main(
     settings: Settings | None = None,
     session_factory: sessionmaker[Session] | None = None,
     gateway: StripeGateway | None = None,
+    classifiers: tuple[ReplyClassifier, ReplyClassifier] | None = None,
 ) -> int:
     """Entry point. The keyword arguments exist so tests can inject fakes; the console script
     passes none and everything comes from the environment."""
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
     args = _build_parser().parse_args(argv)
+
+    if args.command == "eval-classifier":
+        return _eval_classifier(args, classifiers)
 
     if settings is None:
         try:
@@ -86,6 +99,29 @@ def main(
     if args.command == "policy":
         return _policy(args, factory)
     return _run_daily(args, settings, factory, gateway)
+
+
+def _eval_classifier(
+    args: argparse.Namespace, classifiers: tuple[ReplyClassifier, ReplyClassifier] | None
+) -> int:
+    """Needs no database. Real classifiers are built only here, from TYPESAFE_API_KEY."""
+    if classifiers is None:
+        ts = TypesafeSettings()
+        if not ts.typesafe_api_key:
+            _err("missing required settings: TYPESAFE_API_KEY")
+            return USAGE_OR_CONFIG
+        reverse = list(reversed(Intent))
+        classifiers = (
+            JevClassifier(ts.typesafe_api_key, ts.jev_model),
+            JevClassifier(ts.typesafe_api_key, ts.jev_model, intent_order=reverse),
+        )
+    try:
+        cases = load_cases(args.fixtures)
+    except (OSError, ValueError, KeyError) as exc:
+        _err(f"could not read fixtures: {type(exc).__name__}")
+        return USAGE_OR_CONFIG
+    print(run_eval(classifiers[0], cases, classifiers[1]).render())
+    return OK
 
 
 def _policy(args: argparse.Namespace, factory: sessionmaker[Session]) -> int:

@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from collection_agent.chasing import ReminderKind
+from collection_agent.db.models import OutboundKind
 
 _SYMBOLS = {"gbp": "£", "eur": "€", "usd": "$"}
 # Stripe's zero-decimal and three-decimal currencies.
@@ -157,3 +158,74 @@ def render_reminder_email(kind: ReminderKind, level: int, facts: ReminderFacts) 
             f"Yours sincerely,\n{signoff}"
         )
     return subject, body
+
+
+# --- replies to customer emails ---------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ReplyFacts:
+    """Only facts we hold, plus (for a promise) the date the customer said they would pay.
+    Nothing here comes from the customer's email text."""
+
+    customer_name: str
+    reference: str
+    amount_minor: int
+    currency: str
+    from_name: str
+    company_name: str
+    hosted_invoice_url: str | None = None
+    promised_date: date | None = None
+    attach_contract: bool = False
+
+
+REPLY_KINDS = (
+    OutboundKind.REPLY_PAID_THANKS,
+    OutboundKind.REPLY_REMITTANCE_REQUEST,
+    OutboundKind.REPLY_PROMISE_ACK,
+    OutboundKind.REPLY_HOLDING,
+    OutboundKind.REPLY_RESEND,
+)
+
+
+def render_reply_body(kind: OutboundKind, facts: ReplyFacts) -> str:
+    """The plain-text body of a reply draft. Refuses to render a kind that needs a payment link
+    or a promised date without one."""
+    amount = format_amount(facts.amount_minor, facts.currency)
+    ref = facts.reference
+    hello = f"Hello {facts.customer_name},\n\n"
+    url = facts.hosted_invoice_url
+    match kind:
+        case OutboundKind.REPLY_PAID_THANKS:
+            text = (
+                f"Thank you. We can confirm that invoice {ref} for {amount} has been paid. "
+                "No further action is needed."
+            )
+        case OutboundKind.REPLY_REMITTANCE_REQUEST:
+            text = (
+                "Thank you for letting us know. We haven't been able to match a payment to "
+                f"invoice {ref} for {amount} yet. Could you reply with the payment date and the "
+                "remittance or transaction reference, so we can find it?"
+            )
+        case OutboundKind.REPLY_PROMISE_ACK:
+            if not url or facts.promised_date is None:
+                raise ValueError("a promise acknowledgement needs a payment link and a date")
+            text = (
+                "Thank you for letting us know. We've noted that you expect to pay invoice "
+                f"{ref} for {amount} by {format_date(facts.promised_date)}. You can pay here:\n"
+                f"{url}"
+            )
+        case OutboundKind.REPLY_HOLDING:
+            text = (
+                f"Thank you for your message about invoice {ref}. A member of our team will "
+                "look at it and get back to you."
+            )
+        case OutboundKind.REPLY_RESEND:
+            if not url:
+                raise ValueError("a resend needs a payment link")
+            text = f"As requested, you can view and pay invoice {ref} for {amount} here:\n{url}"
+            if facts.attach_contract:
+                text += "\n\nYour contract is attached."
+        case _:
+            raise ValueError(f"{kind.value} is not a reply kind")
+    return f"{hello}{text}\n\nThanks,\n{facts.from_name}\n{facts.company_name}\n"

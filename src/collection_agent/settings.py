@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,20 @@ class Settings(BaseSettings):
     email_from_name: str | None = None
     reply_to_domain: str | None = None
     company_name: str | None = None
+    typesafe_api_key: str | None = None
+    jev_model: str = "jev-1.13.0"
+    classifier_min_confidence: float = Field(default=0.6, ge=0, le=1)
+    inbound_webhook_user: str | None = None
+    inbound_webhook_password: str | None = None
+
+
+class TypesafeSettings(BaseSettings):
+    """Just what the classifier needs, so `eval-classifier` doesn't require DATABASE_URL."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    typesafe_api_key: str | None = None
+    jev_model: str = "jev-1.13.0"
 
 
 @lru_cache

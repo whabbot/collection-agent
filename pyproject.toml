@@ -17,6 +17,7 @@ dependencies = [
     "sqlalchemy>=2.1.4",
     "stripe>=16.0.0",
     "uvicorn[standard]>=0.54.0",
+    "typesafe-sdk>=0.7.5",
 ]
 
 [project.scripts]
@@ -29,7 +30,10 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-markers = ["db: needs the compose Postgres test database (docker compose up -d db)"]
+markers = [
+    "db: needs the compose Postgres test database (docker compose up -d db)",
+    "live: calls the real Jev API (needs TYPESAFE_API_KEY); deselected unless run with -m live",
+]
 
 [tool.ruff]
 line-length = 100

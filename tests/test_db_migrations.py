@@ -112,3 +112,100 @@ def test_0004_round_trips_and_has_the_reminder_guard(db_engine: Engine) -> None:
     assert "pending_approval" in where
     assert "sending" in where
     assert "reminder_broken_promise" in where
+
+
+def test_0005_round_trips_and_downgrade_refuses_when_reply_rows_exist(db_engine: Engine) -> None:
+    cfg = alembic_config(get_test_database_url())
+    command.downgrade(cfg, "0004")
+    insp = inspect(db_engine)
+    old_inbound = {c["name"] for c in insp.get_columns("inbound_messages")}
+    assert (
+        not {"intent", "route", "review_status", "match_method", "attachment_count"} & old_inbound
+    )
+    old_outbound = {c["name"] for c in insp.get_columns("outbound_emails")}
+    assert not {"in_reply_to_message_id", "references", "inbound_message_id"} & old_outbound
+    command.upgrade(cfg, "head")
+
+    insp = inspect(db_engine)
+    inbound = {c["name"]: c for c in insp.get_columns("inbound_messages")}
+    for name in (
+        "postmark_message_id",
+        "match_method",
+        "is_auto_reply",
+        "classified_text",
+        "references_header",
+        "intent",
+        "intent_confidence",
+        "intent_probabilities",
+        "classifier_model",
+        "promised_date",
+        "promised_date_raw",
+        "route",
+        "review_status",
+        "reviewed_by",
+        "reviewed_at",
+        "reviewer_intent",
+        "review_note",
+        "attachment_count",
+    ):
+        assert name in inbound
+    for name in ("match_method", "is_auto_reply", "review_status", "attachment_count"):
+        assert inbound[name]["nullable"] is False
+        assert inbound[name]["default"] is not None  # a server default, so old rows backfill
+    outbound = {c["name"] for c in insp.get_columns("outbound_emails")}
+    assert {"in_reply_to_message_id", "references", "inbound_message_id"} <= outbound
+    fks = insp.get_foreign_keys("outbound_emails")
+    assert any(fk["referred_table"] == "inbound_messages" for fk in fks)
+
+    # A reply-kind outbox row is a record of what a customer was sent: downgrade refuses.
+    with db_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO customers (id, stripe_customer_id, name, email) "
+                "VALUES ('00000000-0000-0000-0000-0000000000c1', 'cus_m5', 'A', 'a@x.test')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO invoices (id, customer_id, stripe_invoice_id, reference, "
+                "amount_minor, currency, due_on, status, state, reply_token) VALUES "
+                "('00000000-0000-0000-0000-0000000000a1', "
+                "'00000000-0000-0000-0000-0000000000c1', 'in_m5', 'REF-M5', 100, 'GBP', "
+                "'2026-11-16', 'open', 'active', 'tok-m5')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO outbound_emails (id, invoice_id, kind, to_address, from_address, "
+                "from_name, reply_to, subject, body_text, attach_contract, status) VALUES "
+                "('00000000-0000-0000-0000-0000000000b1', "
+                "'00000000-0000-0000-0000-0000000000a1', 'reply_holding', 'a@x.test', "
+                "'b@x.test', 'B', 'r@x.test', 's', 'b', false, 'pending_approval')"
+            )
+        )
+    with pytest.raises(RuntimeError, match="refusing to downgrade"):
+        command.downgrade(cfg, "0004")
+    with db_engine.begin() as conn:
+        conn.execute(text("DELETE FROM outbound_emails"))
+        conn.execute(text("DELETE FROM invoices"))
+        conn.execute(text("DELETE FROM customers"))
+    command.downgrade(cfg, "0004")
+    command.upgrade(cfg, "head")
+
+
+def test_0005_check_constraints_reject_unknown_values(db_engine: Engine) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    bad = (
+        "INSERT INTO inbound_messages (id, message_id, from_address, subject, body_text, "
+        "received_at, counts_as_response, {col}) VALUES (gen_random_uuid(), 'm-{col}', 'a', 's', "
+        "'b', now(), true, '{val}')"
+    )
+    for col, val in (
+        ("match_method", "guess"),
+        ("review_status", "maybe"),
+        ("intent", "refund"),
+        ("reviewer_intent", "refund"),
+    ):
+        with pytest.raises(IntegrityError), db_engine.begin() as conn:
+            conn.execute(text(bad.format(col=col, val=val)))

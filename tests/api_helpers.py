@@ -1,20 +1,32 @@
 """Build a TestClient with every external dependency overridden."""
 
 from collections.abc import Iterator
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from collection_agent.app import create_app
-from collection_agent.deps import get_email_sender, get_session, get_stripe_gateway, get_today
+from collection_agent.classifier import ReplyClassifier
+from collection_agent.deps import (
+    get_email_sender,
+    get_now,
+    get_optional_stripe_gateway,
+    get_reply_classifier,
+    get_session,
+    get_stripe_gateway,
+    get_today,
+)
 from collection_agent.email_sender import EmailSender
 from collection_agent.settings import Settings, get_settings
 from collection_agent.stripe_gateway import StripeGateway
 
 ADMIN_TOKEN = "admin_test_fake"
 AUTH = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+INBOUND_USER = "inbound_test_user"
+INBOUND_PASSWORD = "inbound_test_pass_fake"
+NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 
 
 class PoisonSession:
@@ -36,6 +48,9 @@ def make_settings(**overrides: str | None) -> Settings:
         "email_from_name": "Acme Billing",
         "reply_to_domain": "billing.example.test",
         "company_name": "Acme Co",
+        "typesafe_api_key": "ts_test_fake_not_real",
+        "inbound_webhook_user": INBOUND_USER,
+        "inbound_webhook_password": INBOUND_PASSWORD,
     }
     return Settings.model_construct(**{**base, **overrides})
 
@@ -47,6 +62,8 @@ def make_client(
     email_sender: EmailSender | None = None,
     settings: Settings | None = None,
     today: date = date(2026, 10, 15),
+    classifier: ReplyClassifier | None = None,
+    now: datetime = NOW,
 ) -> TestClient:
     app = create_app()
 
@@ -56,6 +73,10 @@ def make_client(
     app.dependency_overrides[get_session] = _session
     app.dependency_overrides[get_settings] = lambda: settings or make_settings()
     app.dependency_overrides[get_today] = lambda: today
+    # Always overridden, so a test can never build a real Jev or Stripe client by accident.
+    app.dependency_overrides[get_now] = lambda: now
+    app.dependency_overrides[get_reply_classifier] = lambda: classifier
+    app.dependency_overrides[get_optional_stripe_gateway] = lambda: gateway
     if gateway is not None:
         app.dependency_overrides[get_stripe_gateway] = lambda: gateway
     if email_sender is not None:

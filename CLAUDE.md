@@ -39,5 +39,8 @@ Python 3.14 via `uv` (system `python3` is 3.9: always go through `uv run`).
 - Daily run (decide, draft reminders into the approval outbox, escalate): `uv run collection-agent run-daily [--date YYYY-MM-DD] [--dry-run]`. Prints a JSON report. Exit 0 ok, 1 no approved policy or missing settings, 2 an invoice hit `stripe_error`/`error`. `--dry-run` needs only `DATABASE_URL`, calls no Stripe and writes nothing.
 - Chase policy: `uv run collection-agent policy create-default` (draft with the decided defaults), `policy show` (the approved one), `policy approve --version N --by NAME`. Nothing chases until a policy is approved.
 - Test Stripe webhooks locally (later, needs a Stripe sandbox and the Stripe CLI): `stripe listen --forward-to localhost:8000/webhooks/stripe`, then `stripe trigger invoice.paid`. Put the signing secret it prints in `.env` as `STRIPE_WEBHOOK_SECRET`.
+- Inbound replies: Postmark POSTs to `/webhooks/inbound` with HTTP Basic auth embedded in the webhook URL (`https://USER:PASSWORD@host/webhooks/inbound`; the values are `INBOUND_WEBHOOK_USER` / `INBOUND_WEBHOOK_PASSWORD`). Review queue: `GET /inbox`, `GET /inbox/{id}`, `POST /inbox/{id}/review` (admin bearer token).
+- Classifier accuracy report (live, needs `TYPESAFE_API_KEY`; sends the synthetic replies in `tests/fixtures/replies.jsonl` to Jev): `uv run collection-agent eval-classifier [--fixtures PATH]`. Prints per-intent accuracy, confusions, date accuracy and option-order flips. Needs no database.
+- Live tests are deselected by default (including under `-m "not db"`); run them with `TYPESAFE_API_KEY=... uv run pytest -m live -s`. They skip if the key is unset.
 
 All four must pass before a slice is done.

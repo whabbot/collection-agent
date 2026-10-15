@@ -11,6 +11,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -47,7 +48,22 @@ class OutboundKind(StrEnum):
     REMINDER = "reminder"
     REMINDER_PRE_DEADLINE = "reminder_pre_deadline"
     REMINDER_BROKEN_PROMISE = "reminder_broken_promise"
+    REPLY_PAID_THANKS = "reply_paid_thanks"
+    REPLY_REMITTANCE_REQUEST = "reply_remittance_request"
+    REPLY_PROMISE_ACK = "reply_promise_ack"
+    REPLY_HOLDING = "reply_holding"
+    REPLY_RESEND = "reply_resend"
 
+
+REPLY_OUTBOUND_KINDS: frozenset[OutboundKind] = frozenset(
+    {
+        OutboundKind.REPLY_PAID_THANKS,
+        OutboundKind.REPLY_REMITTANCE_REQUEST,
+        OutboundKind.REPLY_PROMISE_ACK,
+        OutboundKind.REPLY_HOLDING,
+        OutboundKind.REPLY_RESEND,
+    }
+)
 
 REMINDER_OUTBOUND_KINDS: dict[OutboundKind, ReminderKind] = {
     OutboundKind.REMINDER: ReminderKind.REMINDER,
@@ -119,9 +135,40 @@ class Reminder(Base):
     sent_on: Mapped[date] = mapped_column(Date)
 
 
+MATCH_METHODS = ("reply_token", "in_reply_to", "sender", "none")
+REVIEW_STATUSES = ("not_needed", "needs_review", "reviewed")
+INTENT_VALUES = (
+    "already_paid",
+    "promise_to_pay",
+    "request_extension",
+    "request_payment_plan",
+    "dispute",
+    "admin_request",
+    "contract_question",
+    "out_of_office",
+    "other",
+)
+
+
+def sql_in(column: str, values: tuple[str, ...]) -> str:
+    return f"{column} IN ({', '.join(repr(v) for v in values)})"
+
+
 class InboundMessage(Base):
     __tablename__ = "inbound_messages"
-    __table_args__ = (Index("ix_inbound_messages_invoice_id", "invoice_id"),)
+    __table_args__ = (
+        CheckConstraint(sql_in("match_method", MATCH_METHODS), name="match_method_known"),
+        CheckConstraint(sql_in("review_status", REVIEW_STATUSES), name="review_status_known"),
+        CheckConstraint(
+            "intent IS NULL OR " + sql_in("intent", INTENT_VALUES), name="intent_known"
+        ),
+        CheckConstraint(
+            "reviewer_intent IS NULL OR " + sql_in("reviewer_intent", INTENT_VALUES),
+            name="reviewer_intent_known",
+        ),
+        Index("ix_inbound_messages_invoice_id", "invoice_id"),
+        Index("ix_inbound_messages_review_status", "review_status"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -132,6 +179,26 @@ class InboundMessage(Base):
     body_text: Mapped[str] = mapped_column(Text)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     counts_as_response: Mapped[bool]
+    postmark_message_id: Mapped[str | None] = mapped_column(String)
+    match_method: Mapped[str] = mapped_column(String, server_default="none")
+    is_auto_reply: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # The text sent to the classifier (quotes stripped, truncated), and the sender's own
+    # `References` header, kept so a reply can thread correctly.
+    classified_text: Mapped[str | None] = mapped_column(Text)
+    references_header: Mapped[str | None] = mapped_column(Text)
+    intent: Mapped[str | None] = mapped_column(String)
+    intent_confidence: Mapped[float | None] = mapped_column(Float)
+    intent_probabilities: Mapped[dict[str, float] | None] = mapped_column(JSONB)
+    classifier_model: Mapped[str | None] = mapped_column(String)
+    promised_date: Mapped[date | None] = mapped_column(Date)
+    promised_date_raw: Mapped[dict[str, str] | None] = mapped_column(JSONB)
+    route: Mapped[str | None] = mapped_column(String)
+    review_status: Mapped[str] = mapped_column(String, server_default="not_needed")
+    reviewed_by: Mapped[str | None] = mapped_column(String)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewer_intent: Mapped[str | None] = mapped_column(String)
+    review_note: Mapped[str | None] = mapped_column(Text)
+    attachment_count: Mapped[int] = mapped_column(Integer, server_default="0")
 
 
 class ChasePolicyRow(Base):
@@ -202,7 +269,7 @@ class OutboundEmail(Base):
     __tablename__ = "outbound_emails"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('invoice', 'reminder', 'reminder_pre_deadline', 'reminder_broken_promise')",
+            sql_in("kind", tuple(k.value for k in OutboundKind)),
             name="kind_known",
         ),
         Index("ix_outbound_emails_status", "status"),
@@ -249,6 +316,12 @@ class OutboundEmail(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     provider_message_id: Mapped[str | None] = mapped_column(String)
     error: Mapped[str | None] = mapped_column(Text)
+    # Threading for reply kinds: header values, angle brackets included.
+    in_reply_to_message_id: Mapped[str | None] = mapped_column(Text)
+    references: Mapped[str | None] = mapped_column(Text)
+    inbound_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("inbound_messages.id"), index=True
+    )
     resolved_by: Mapped[str | None] = mapped_column(String)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

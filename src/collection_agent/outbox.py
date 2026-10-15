@@ -1,5 +1,6 @@
 """Shared outbox helpers: building a draft row and applying the effects of a completed send."""
 
+import uuid
 from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
@@ -25,6 +26,9 @@ def new_outbound_email(
     subject: str,
     body: str,
     attach_contract: bool,
+    in_reply_to_message_id: str | None = None,
+    references: str | None = None,
+    inbound_message_id: uuid.UUID | None = None,
 ) -> OutboundEmail:
     """A `pending_approval` outbox row. From and Reply-To are the same for every kind: the
     reply address carries the invoice's token so replies map back to the invoice."""
@@ -39,6 +43,9 @@ def new_outbound_email(
         body_text=body,
         attach_contract=attach_contract,
         status=OutboundStatus.PENDING_APPROVAL,
+        in_reply_to_message_id=in_reply_to_message_id,
+        references=references,
+        inbound_message_id=inbound_message_id,
     )
 
 
@@ -52,7 +59,8 @@ def apply_sent(
 ) -> None:
     """Mark `row` sent and apply what a send means. Does not commit, so the caller's commit
     makes the status change and its effects atomic: the invoice email stamps `sent_on` (if
-    unset); a reminder is recorded in `reminders`, which feeds the next chase decision."""
+    unset); a reminder is recorded in `reminders`, which feeds the next chase decision. A reply
+    to a customer's email is only marked sent: it is not a chase, so it records nothing."""
     row.status = OutboundStatus.SENT
     row.sent_at = datetime.now(UTC)
     row.provider_message_id = provider_message_id
@@ -60,5 +68,5 @@ def apply_sent(
     if kind is OutboundKind.INVOICE:
         if invoice.sent_on is None:
             invoice.sent_on = today
-    else:
+    elif kind in REMINDER_OUTBOUND_KINDS:
         record_reminder(session, invoice.id, REMINDER_OUTBOUND_KINDS[kind], today)

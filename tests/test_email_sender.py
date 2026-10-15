@@ -131,3 +131,30 @@ def test_no_automatic_retry() -> None:
     with pytest.raises(EmailSendError):
         sender_with(httpx.MockTransport(handler)).send(message())
     assert calls == 1
+
+
+def test_threading_headers_are_sent_as_postmark_headers_only_when_present() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"ErrorCode": 0, "Message": "OK", "MessageID": "m-1"})
+
+    sender = sender_with(httpx.MockTransport(handler))
+    threaded = OutgoingEmail(
+        from_name="Acme",
+        from_address="billing@billing.example.test",
+        to="ap@acme.example",
+        reply_to="reply+abc@billing.example.test",
+        subject="Re: x",
+        text_body="Hello\n",
+        headers=(("In-Reply-To", "<a@x>"), ("References", "<z@x> <a@x>")),
+    )
+    sender.send(threaded)
+    sender.send(message())
+
+    assert json.loads(seen[0].content)["Headers"] == [
+        {"Name": "In-Reply-To", "Value": "<a@x>"},
+        {"Name": "References", "Value": "<z@x> <a@x>"},
+    ]
+    assert "Headers" not in json.loads(seen[1].content)

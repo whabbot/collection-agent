@@ -1,4 +1,5 @@
 import os
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -75,3 +76,14 @@ def session_factory(db_conn: Connection) -> sessionmaker[Session]:
     """Sessions on the same rolled-back transaction as `session`, for code that opens and
     commits its own sessions (the daily run, the CLI)."""
     return sessionmaker(db_conn, join_transaction_mode="create_savepoint", expire_on_commit=False)
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """`live` tests call real services. Deselect them unless the `-m` expression names `live`:
+    an explicit `-m "not db"` replaces any default, so this cannot be left to addopts."""
+    if re.search(r"(?<!not )\blive\b", config.getoption("markexpr") or ""):
+        return
+    live = [item for item in items if item.get_closest_marker("live")]
+    if live:
+        items[:] = [item for item in items if item not in live]
+        config.hook.pytest_deselected(items=live)

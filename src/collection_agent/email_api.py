@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 
 from collection_agent.chasing import InvoiceState, InvoiceStatus
 from collection_agent.db.models import (
+    REPLY_OUTBOUND_KINDS,
     Contract,
     Customer,
     Invoice,
@@ -46,6 +47,19 @@ def _error(code: str, status: int) -> JSONResponse:
 
 def _invoice_is_open(inv: Invoice) -> bool:
     return inv.status is InvoiceStatus.OPEN and inv.state is InvoiceState.ACTIVE
+
+
+def _invoice_allows_send(inv: Invoice, kind: str) -> bool:
+    """Whether the invoice is in a state where this outbox row may still go out.
+
+    Invoice and reminder emails need an open, active invoice. A reply to a customer is judged on
+    `status` alone: it is often drafted precisely because the invoice just became `disputed` or
+    `with_human`. A paid-thanks needs the invoice paid; any other reply needs it still open."""
+    if OutboundKind(kind) not in REPLY_OUTBOUND_KINDS:
+        return _invoice_is_open(inv)
+    if kind == OutboundKind.REPLY_PAID_THANKS:
+        return inv.status is InvoiceStatus.PAID
+    return inv.status is InvoiceStatus.OPEN
 
 
 # --- contract upload ---------------------------------------------------------------------
@@ -155,6 +169,9 @@ class OutboxOut(BaseModel):
     sent_at: datetime | None
     provider_message_id: str | None
     error: str | None
+    in_reply_to_message_id: str | None
+    references: str | None
+    inbound_message_id: uuid.UUID | None
 
 
 def _contract_info(session: Session, row: OutboundEmail) -> ContractInfo | None:
@@ -196,6 +213,9 @@ def _out(session: Session, row: OutboundEmail) -> OutboxOut:
         sent_at=row.sent_at,
         provider_message_id=row.provider_message_id,
         error=row.error,
+        in_reply_to_message_id=row.in_reply_to_message_id,
+        references=row.references,
+        inbound_message_id=row.inbound_message_id,
     )
 
 
@@ -293,6 +313,15 @@ def get_outbox(outbox_id: uuid.UUID, _admin: AdminDep, session: SessionDep) -> R
     return _json(session, row)
 
 
+def _threading_headers(row: OutboundEmail) -> tuple[tuple[str, str], ...]:
+    headers: list[tuple[str, str]] = []
+    if row.in_reply_to_message_id:
+        headers.append(("In-Reply-To", row.in_reply_to_message_id))
+    if row.references:
+        headers.append(("References", row.references))
+    return tuple(headers)
+
+
 class ApproveIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -361,7 +390,7 @@ def approve(
         .with_for_update()
         .execution_options(populate_existing=True)
     ).one()
-    if not _invoice_is_open(invoice):
+    if not _invoice_allows_send(invoice, row.kind):
         row.status = OutboundStatus.REJECTED
         row.rejected_by = "system"
         row.rejected_at = datetime.now(UTC)
@@ -388,6 +417,7 @@ def approve(
         text_body=row.body_text,
         attachments=attachments,
         metadata={"invoice_id": str(row.invoice_id), "outbound_email_id": str(row.id)},
+        headers=_threading_headers(row),
     )
     row.status = OutboundStatus.SENDING
     row.approved_by = body.approved_by

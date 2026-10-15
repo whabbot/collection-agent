@@ -3,7 +3,7 @@
 import secrets
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from functools import lru_cache
 from typing import Annotated
 from zoneinfo import ZoneInfo
@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session, sessionmaker
 
+from collection_agent.classifier import JevClassifier, ReplyClassifier
 from collection_agent.db.engine import make_engine, make_session_factory
 from collection_agent.email_sender import EmailSender, PostmarkSender
 from collection_agent.settings import Settings, get_settings
@@ -129,3 +130,43 @@ def get_email_identity(settings: SettingsDep) -> EmailIdentity:
 
 
 EmailIdentityDep = Annotated[EmailIdentity, Depends(get_email_identity)]
+
+
+def get_now() -> datetime:
+    """The current moment, timezone-aware. Override in tests to control the clock."""
+    return datetime.now(UTC)
+
+
+NowDep = Annotated[datetime, Depends(get_now)]
+
+
+# --- optional dependencies for the inbound webhook ---------------------------------------------
+# A reply must be stored even when Stripe, the email identity or the classifier is not
+# configured (Postmark would otherwise retry, then drop it), so these return None instead of
+# raising 503. The webhook sends the message to a human when it needs one that is missing.
+
+
+def get_optional_stripe_gateway(settings: SettingsDep) -> StripeGateway | None:
+    if not settings.stripe_secret_key:
+        return None
+    return _live_gateway(settings.stripe_secret_key)
+
+
+def get_optional_email_identity(settings: SettingsDep) -> EmailIdentity | None:
+    return identity_from_settings(settings)
+
+
+@lru_cache
+def _jev_classifier(api_key: str, model: str) -> JevClassifier:
+    return JevClassifier(api_key, model)
+
+
+def get_reply_classifier(settings: SettingsDep) -> ReplyClassifier | None:
+    if not settings.typesafe_api_key:
+        return None
+    return _jev_classifier(settings.typesafe_api_key, settings.jev_model)
+
+
+OptionalGatewayDep = Annotated[StripeGateway | None, Depends(get_optional_stripe_gateway)]
+OptionalIdentityDep = Annotated[EmailIdentity | None, Depends(get_optional_email_identity)]
+ClassifierDep = Annotated[ReplyClassifier | None, Depends(get_reply_classifier)]

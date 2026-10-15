@@ -17,6 +17,8 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 | Clearance deadline | 15th of the month **following** the month the invoice was sent; rolls to the next working day if it falls on a weekend or bank holiday |
 | Email provider | **Postmark** for sending and inbound (decided 15 Oct 2026) |
 | Reminder drafting (v1) | **Fixed plain-text templates** (friendly → firm → formal by reminder number), no LLM. Claude drafting comes later, once tone examples and policy docs exist. Every draft is human-approved (decided 15 Oct 2026) |
+| Reply routing (v1) | Code table, decided 15 Oct 2026. Every reply we draft goes through the approval outbox as template text (no LLM). **Already paid** → verify in Stripe; if paid, mark paid + thank-you draft; else draft asking for a remittance reference. **Promise to pay** → if the date is on or before the invoice's `due_on`: set `promised_date`, pause until promise + grace, draft acknowledgement; otherwise human. **Extension / payment plan** → human + holding-reply draft. **Dispute** → stop chasing (`disputed`) + human + holding-reply draft. **Admin: resend** → draft resend with link + contract; **admin: billing-detail change** → human + holding reply. **Contract question** → human (until contracts are in Cognee). **Out of office** → not a response, ignored. **Other / low confidence** → human, no draft |
+| Promise-to-pay limit | The agent may accept a promised date no later than the invoice's `due_on`; anything later goes to a human (decided 15 Oct 2026) |
 | Reply classifier | **Jev** (TypeSafe): typed decisions with calibrated probabilities. Use it directly; no comparison against other models. Classification only; drafting still needs a generative LLM. Key in `TYPESAFE_API_KEY` (the SDK default). No `summary` field in v1: Jev can't generate text, and reviewers read the email itself. See `docs/jev.md` (decided 15 Oct 2026) |
 | `ChasePolicy` defaults | 7 days no response; pre-deadline reminder 3 working days before the deadline; escalate after 3 reminders; 2 business days grace after a missed promise; no sends on weekends or England & Wales bank holidays (decided 15 Oct 2026) |
 
@@ -46,21 +48,7 @@ Timing numbers are decided (see above). Still proposed:
 
 | Rule | Proposed |
 |---|---|
-| Latest acceptable promise-to-pay date | No later than the clearance deadline |
 | Agent can agree extensions / payment plans | No — always human |
-
-### Reply handling routing
-
-| Intent | Action | Auto-reply? |
-|---|---|---|
-| Already paid | Verify in Stripe; if paid thank + stop, else ask for remittance reference | Yes |
-| Promise to pay | Within policy → pause until date + grace and confirm; else human | Yes, within policy |
-| Extension / payment plan | Human | Holding reply only |
-| Dispute | Stop chasing immediately, human | Holding reply only |
-| Admin request | Resend invoice/contract; billing-detail changes → human | Partly |
-| Contract question | Answer from contract via Cognee only if a clause can be quoted; else human | Yes, if grounded |
-| Out of office | Not a response; schedule unchanged | No |
-| Other / low confidence | Human | No |
 
 ### Taste (proposed)
 

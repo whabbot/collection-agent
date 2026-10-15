@@ -119,12 +119,22 @@ def record_inbound_message(
     body_text: str,
     received_at: datetime,
     counts_as_response: bool,
+    postmark_message_id: str | None = None,
+    match_method: str = "none",
+    is_auto_reply: bool = False,
+    classified_text: str | None = None,
+    references_header: str | None = None,
+    route: str | None = None,
+    review_status: str = "not_needed",
+    attachment_count: int = 0,
+    id: uuid.UUID | None = None,
 ) -> bool:
-    """Insert a message; return False (no error) if `message_id` was already stored."""
+    """Insert a message; return False (no error) if `message_id` was already stored. The caller
+    may supply the row's `id` so it can refer to the message without a second query."""
     stmt = (
         pg_insert(InboundMessage)
         .values(
-            id=uuid.uuid4(),
+            id=id or uuid.uuid4(),
             invoice_id=invoice_id,
             message_id=message_id,
             from_address=from_address,
@@ -132,6 +142,14 @@ def record_inbound_message(
             body_text=body_text,
             received_at=received_at,
             counts_as_response=counts_as_response,
+            postmark_message_id=postmark_message_id,
+            match_method=match_method,
+            is_auto_reply=is_auto_reply,
+            classified_text=classified_text,
+            references_header=references_header,
+            route=route,
+            review_status=review_status,
+            attachment_count=attachment_count,
         )
         .on_conflict_do_nothing(index_elements=["message_id"])
         .returning(InboundMessage.id)
