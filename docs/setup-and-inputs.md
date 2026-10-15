@@ -17,6 +17,7 @@ EMAIL_FROM_NAME=            # sender display name (person or team)
 REPLY_TO_DOMAIN=            # inbound domain for reply+<token>@<domain>
 COMPANY_NAME=               # used in the invoice email subject and sign-off
 ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=            # optional, defaults to claude-opus-5-5
 TYPESAFE_API_KEY=           # Jev reply classifier (name the SDK reads)
 JEV_MODEL=                  # optional, defaults to jev-1.13.0 (pinned)
 CLASSIFIER_MIN_CONFIDENCE=  # optional, defaults to 0.6; below this a reply goes to a human
@@ -24,6 +25,7 @@ INBOUND_WEBHOOK_USER=       # HTTP Basic user Postmark sends to /webhooks/inboun
 INBOUND_WEBHOOK_PASSWORD=   # HTTP Basic password for the same
 COGNEE_BASE_URL=
 COGNEE_API_KEY=
+COGNEE_POLICIES_DATASET=    # optional, defaults to policies
 DATABASE_URL=
 ```
 

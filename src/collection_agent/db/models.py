@@ -4,6 +4,7 @@ import secrets
 import uuid
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -238,6 +239,42 @@ class ChasePolicyRow(Base):
     status: Mapped[PolicyStatus] = mapped_column(_pg_enum(PolicyStatus, "policy_status"))
     approved_by: Mapped[str | None] = mapped_column(String)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PolicyDocument(Base):
+    """Pasted policy text, kept as received. `cognee_status` records the soft-guidance ingest."""
+
+    __tablename__ = "policy_documents"
+    __table_args__ = (
+        CheckConstraint(
+            "cognee_status IN ('not_configured', 'ingested', 'failed')",
+            name="policy_documents_cognee_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    title: Mapped[str] = mapped_column(String)
+    text: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(String(64))
+    cognee_status: Mapped[str] = mapped_column(String, server_default="not_configured")
+    cognee_error: Mapped[str | None] = mapped_column(String)
+
+
+class PolicyExtraction(Base):
+    """What Claude proposed for one draft policy version, with the source of each value."""
+
+    __tablename__ = "policy_extractions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    policy_document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("policy_documents.id"))
+    policy_version: Mapped[int] = mapped_column(
+        Integer, ForeignKey("chase_policies.version"), unique=True
+    )
+    model: Mapped[str] = mapped_column(String)
+    fields: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    soft_guidance: Mapped[list[Any]] = mapped_column(JSONB)
 
 
 class StripeEvent(Base):

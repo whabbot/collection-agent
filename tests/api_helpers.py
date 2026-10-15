@@ -9,16 +9,20 @@ from sqlalchemy.orm import Session
 
 from collection_agent.app import create_app
 from collection_agent.classifier import ReplyClassifier
+from collection_agent.cognee_client import CogneeGateway
 from collection_agent.deps import (
+    get_cognee,
     get_email_sender,
     get_now,
     get_optional_stripe_gateway,
+    get_policy_extractor,
     get_reply_classifier,
     get_session,
     get_stripe_gateway,
     get_today,
 )
 from collection_agent.email_sender import EmailSender
+from collection_agent.policy_extraction import PolicyExtractor
 from collection_agent.settings import Settings, get_settings
 from collection_agent.stripe_gateway import StripeGateway
 
@@ -64,6 +68,8 @@ def make_client(
     today: date = date(2026, 10, 15),
     classifier: ReplyClassifier | None = None,
     now: datetime = NOW,
+    cognee: CogneeGateway | None = None,
+    extractor: PolicyExtractor | None = None,
 ) -> TestClient:
     app = create_app()
 
@@ -76,6 +82,8 @@ def make_client(
     # Always overridden, so a test can never build a real Jev or Stripe client by accident.
     app.dependency_overrides[get_now] = lambda: now
     app.dependency_overrides[get_reply_classifier] = lambda: classifier
+    app.dependency_overrides[get_cognee] = lambda: cognee
+    app.dependency_overrides[get_policy_extractor] = lambda: extractor
     app.dependency_overrides[get_optional_stripe_gateway] = lambda: gateway
     if gateway is not None:
         app.dependency_overrides[get_stripe_gateway] = lambda: gateway

@@ -1,6 +1,7 @@
 import pytest
 from alembic import command
 from sqlalchemy import Engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 from tests.conftest import alembic_config, get_test_database_url
 
@@ -194,7 +195,6 @@ def test_0005_round_trips_and_downgrade_refuses_when_reply_rows_exist(db_engine:
 
 
 def test_0005_check_constraints_reject_unknown_values(db_engine: Engine) -> None:
-    from sqlalchemy.exc import IntegrityError
 
     bad = (
         "INSERT INTO inbound_messages (id, message_id, from_address, subject, body_text, "
@@ -231,3 +231,28 @@ def test_0006_round_trips_and_adds_the_rule_columns(db_engine: Engine) -> None:
         found = {c["name"]: c for c in insp.get_columns(table)}
         assert cols <= set(found)
         assert all(found[c]["nullable"] for c in cols)
+
+
+def test_0007_round_trips_and_adds_the_policy_tables(db_engine: Engine) -> None:
+    cfg = alembic_config(get_test_database_url())
+    command.downgrade(cfg, "0006")
+    assert not {"policy_documents", "policy_extractions"} & set(
+        inspect(db_engine).get_table_names()
+    )
+    command.upgrade(cfg, "head")
+    insp = inspect(db_engine)
+    assert {"policy_documents", "policy_extractions"} <= set(insp.get_table_names())
+    cols = {c["name"] for c in insp.get_columns("policy_extractions")}
+    assert {"policy_document_id", "policy_version", "model", "fields", "soft_guidance"} <= cols
+    uniques = insp.get_unique_constraints("policy_extractions")
+    assert any(u["column_names"] == ["policy_version"] for u in uniques)
+
+
+def test_policy_document_cognee_status_is_constrained(db_engine: Engine) -> None:
+    with pytest.raises(IntegrityError), db_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO policy_documents (id, title, text, sha256, cognee_status) "
+                "VALUES (gen_random_uuid(), 't', 'x', 'h', 'maybe')"
+            )
+        )

@@ -1,8 +1,10 @@
 """Data access. Callers own commit/rollback; nothing here commits."""
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, update
@@ -21,6 +23,8 @@ from collection_agent.db.models import (
     ChasePolicyRow,
     InboundMessage,
     Invoice,
+    PolicyDocument,
+    PolicyExtraction,
     PolicyStatus,
     Reminder,
 )
@@ -171,12 +175,7 @@ def record_inbound_message(
     return session.execute(stmt).scalar_one_or_none() is not None
 
 
-def get_approved_policy(session: Session) -> ChasePolicy:
-    row = session.scalars(
-        select(ChasePolicyRow).where(ChasePolicyRow.status == PolicyStatus.APPROVED)
-    ).one_or_none()
-    if row is None:
-        raise NoApprovedPolicyError("no approved ChasePolicy; approve a draft before chasing")
+def policy_from_row(row: ChasePolicyRow) -> ChasePolicy:
     return ChasePolicy(
         no_response_days=row.no_response_days,
         clearance_day_of_month=row.clearance_day_of_month,
@@ -185,6 +184,64 @@ def get_approved_policy(session: Session) -> ChasePolicy:
         max_reminders=row.max_reminders,
         promise_grace_working_days=row.promise_grace_working_days,
     )
+
+
+def get_approved_policy(session: Session) -> ChasePolicy:
+    row = get_approved_policy_row(session)
+    if row is None:
+        raise NoApprovedPolicyError("no approved ChasePolicy; approve a draft before chasing")
+    return policy_from_row(row)
+
+
+def get_approved_policy_row(session: Session) -> ChasePolicyRow | None:
+    return session.scalars(
+        select(ChasePolicyRow).where(ChasePolicyRow.status == PolicyStatus.APPROVED)
+    ).one_or_none()
+
+
+def get_policy_row(session: Session, version: int) -> ChasePolicyRow | None:
+    return session.scalars(
+        select(ChasePolicyRow).where(ChasePolicyRow.version == version)
+    ).one_or_none()
+
+
+def add_policy_document(session: Session, title: str, text: str) -> PolicyDocument:
+    doc = PolicyDocument(
+        title=title,
+        text=text,
+        sha256=hashlib.sha256(text.encode()).hexdigest(),
+        cognee_status="not_configured",
+    )
+    session.add(doc)
+    session.flush()
+    return doc
+
+
+def add_policy_extraction(
+    session: Session,
+    *,
+    document_id: uuid.UUID,
+    version: int,
+    model: str,
+    fields: dict[str, Any],
+    soft_guidance: list[dict[str, str]],
+) -> PolicyExtraction:
+    row = PolicyExtraction(
+        policy_document_id=document_id,
+        policy_version=version,
+        model=model,
+        fields=fields,
+        soft_guidance=soft_guidance,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def get_policy_extraction(session: Session, version: int) -> PolicyExtraction | None:
+    return session.scalars(
+        select(PolicyExtraction).where(PolicyExtraction.policy_version == version)
+    ).one_or_none()
 
 
 def create_draft_policy(session: Session, policy: ChasePolicy) -> int:

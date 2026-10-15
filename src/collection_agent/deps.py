@@ -12,8 +12,10 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session, sessionmaker
 
 from collection_agent.classifier import JevClassifier, ReplyClassifier
+from collection_agent.cognee_client import CogneeGateway, LiveCognee
 from collection_agent.db.engine import make_engine, make_session_factory
 from collection_agent.email_sender import EmailSender, PostmarkSender
+from collection_agent.policy_extraction import ClaudeExtractor, PolicyExtractor
 from collection_agent.settings import Settings, get_settings
 from collection_agent.stripe_gateway import LiveStripeGateway, StripeGateway
 
@@ -170,3 +172,32 @@ def get_reply_classifier(settings: SettingsDep) -> ReplyClassifier | None:
 OptionalGatewayDep = Annotated[StripeGateway | None, Depends(get_optional_stripe_gateway)]
 OptionalIdentityDep = Annotated[EmailIdentity | None, Depends(get_optional_email_identity)]
 ClassifierDep = Annotated[ReplyClassifier | None, Depends(get_reply_classifier)]
+
+
+# --- policy ingest: both are optional, each endpoint decides what a missing one means ------------
+
+
+@lru_cache
+def _live_cognee(base_url: str, api_key: str) -> LiveCognee:
+    return LiveCognee(base_url, api_key)
+
+
+def get_cognee(settings: SettingsDep) -> CogneeGateway | None:
+    if not settings.cognee_base_url or not settings.cognee_api_key:
+        return None
+    return _live_cognee(settings.cognee_base_url, settings.cognee_api_key)
+
+
+@lru_cache
+def _claude_extractor(api_key: str, model: str) -> ClaudeExtractor:
+    return ClaudeExtractor(api_key, model)
+
+
+def get_policy_extractor(settings: SettingsDep) -> PolicyExtractor | None:
+    if not settings.anthropic_api_key:
+        return None
+    return _claude_extractor(settings.anthropic_api_key, settings.anthropic_model)
+
+
+CogneeDep = Annotated[CogneeGateway | None, Depends(get_cognee)]
+ExtractorDep = Annotated[PolicyExtractor | None, Depends(get_policy_extractor)]

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from collection_agent.classifier import Intent, JevClassifier, ReplyClassifier
 from collection_agent.classifier_eval import DEFAULT_FIXTURES, load_cases, run_eval
+from collection_agent.cognee_client import CogneeGateway, LiveCognee
 from collection_agent.daily import run_daily
 from collection_agent.db.engine import make_engine, make_session_factory
 from collection_agent.db.repository import (
@@ -26,6 +27,7 @@ from collection_agent.db.repository import (
     approve_policy,
     create_draft_policy,
     get_approved_policy,
+    get_policy_row,
 )
 from collection_agent.deps import (
     EmailIdentity,
@@ -34,6 +36,10 @@ from collection_agent.deps import (
     missing_identity_settings,
 )
 from collection_agent.policy import ChasePolicy
+from collection_agent.policy_api import MAX_POLICY_CHARS, MIN_POLICY_CHARS
+from collection_agent.policy_cards import render_cards
+from collection_agent.policy_extraction import ClaudeExtractor, ExtractionError, PolicyExtractor
+from collection_agent.policy_ingest import cards_for, extract_and_draft, store_and_ingest
 from collection_agent.settings import Settings, TypesafeSettings
 from collection_agent.stripe_gateway import LiveStripeGateway, StripeGateway
 
@@ -56,6 +62,11 @@ def _build_parser() -> argparse.ArgumentParser:
     psub = policy.add_subparsers(dest="policy_command", required=True)
     psub.add_parser("create-default", help="insert a draft with the decided defaults")
     psub.add_parser("show", help="print the approved policy")
+    ingest = psub.add_parser(
+        "ingest", help="store policy text, send it to Cognee, and have Claude propose a draft"
+    )
+    ingest.add_argument("--title", required=True)
+    ingest.add_argument("--file", type=Path, required=True, help="a UTF-8 text file")
     approve = psub.add_parser("approve", help="approve a draft policy version")
     approve.add_argument("--version", type=int, required=True)
     approve.add_argument("--by", required=True, help="who is approving")
@@ -79,6 +90,8 @@ def main(
     session_factory: sessionmaker[Session] | None = None,
     gateway: StripeGateway | None = None,
     classifiers: tuple[ReplyClassifier, ReplyClassifier] | None = None,
+    cognee: CogneeGateway | None = None,
+    extractor: PolicyExtractor | None = None,
 ) -> int:
     """Entry point. The keyword arguments exist so tests can inject fakes; the console script
     passes none and everything comes from the environment."""
@@ -97,7 +110,7 @@ def main(
     factory = session_factory or make_session_factory(make_engine(settings.database_url))
 
     if args.command == "policy":
-        return _policy(args, factory)
+        return _policy(args, factory, settings, cognee, extractor)
     return _run_daily(args, settings, factory, gateway)
 
 
@@ -124,7 +137,15 @@ def _eval_classifier(
     return OK
 
 
-def _policy(args: argparse.Namespace, factory: sessionmaker[Session]) -> int:
+def _policy(
+    args: argparse.Namespace,
+    factory: sessionmaker[Session],
+    settings: Settings,
+    cognee: CogneeGateway | None,
+    extractor: PolicyExtractor | None,
+) -> int:
+    if args.policy_command == "ingest":
+        return _policy_ingest(args, factory, settings, cognee, extractor)
     with factory() as session:
         match args.policy_command:
             case "create-default":
@@ -147,6 +168,48 @@ def _policy(args: argparse.Namespace, factory: sessionmaker[Session]) -> int:
                     return USAGE_OR_CONFIG
                 session.commit()
                 print(f"approved policy version {args.version}")
+    return OK
+
+
+def _policy_ingest(
+    args: argparse.Namespace,
+    factory: sessionmaker[Session],
+    settings: Settings,
+    cognee: CogneeGateway | None,
+    extractor: PolicyExtractor | None,
+) -> int:
+    try:
+        text = args.file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        _err(f"could not read the policy file: {type(exc).__name__}")
+        return USAGE_OR_CONFIG
+    if not MIN_POLICY_CHARS <= len(text) <= MAX_POLICY_CHARS:
+        _err(f"the policy text must be {MIN_POLICY_CHARS} to {MAX_POLICY_CHARS} characters")
+        return USAGE_OR_CONFIG
+    if cognee is None and settings.cognee_base_url and settings.cognee_api_key:
+        cognee = LiveCognee(settings.cognee_base_url, settings.cognee_api_key)
+    if extractor is None and settings.anthropic_api_key:
+        extractor = ClaudeExtractor(settings.anthropic_api_key, settings.anthropic_model)
+
+    with factory() as session:
+        doc = store_and_ingest(session, args.title, text, cognee, settings.cognee_policies_dataset)
+        session.commit()  # the text stays stored whatever happens next
+        print(f"stored document {doc.id} (cognee: {doc.cognee_status})")
+        if extractor is None:
+            _err("missing required settings: ANTHROPIC_API_KEY")
+            return USAGE_OR_CONFIG
+        try:
+            version = extract_and_draft(session, doc, extractor)
+        except ExtractionError as exc:
+            session.rollback()
+            _err(f"extraction failed: {exc}")
+            return RUN_PROBLEM
+        row = get_policy_row(session, version)
+        assert row is not None
+        card_set = cards_for(session, row)
+        session.commit()
+    print(render_cards(card_set.version, card_set.status, card_set.cards, card_set.soft_guidance))
+    print(f"\nreview it, then: collection-agent policy approve --version {version} --by <name>")
     return OK
 
 

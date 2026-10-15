@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     classifier_min_confidence: float = Field(default=0.6, ge=0, le=1)
     inbound_webhook_user: str | None = None
     inbound_webhook_password: str | None = None
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-opus-5-5"
+    cognee_base_url: str | None = None
+    cognee_api_key: str | None = None
+    cognee_policies_dataset: str = "policies"
 
 
 class TypesafeSettings(BaseSettings):
