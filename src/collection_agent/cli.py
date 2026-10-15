@@ -9,8 +9,8 @@ import argparse
 import json
 import logging
 import sys
-from collections.abc import Sequence
-from datetime import date
+from collections.abc import Callable, Sequence
+from datetime import date, datetime
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -29,9 +29,11 @@ from collection_agent.db.repository import (
     get_approved_policy,
     get_policy_row,
 )
+from collection_agent.demo_reset import DemoResetRefused, confirm_and_reset
+from collection_agent.demo_support import clock_today
 from collection_agent.deps import (
+    LONDON,
     EmailIdentity,
-    get_today,
     identity_from_settings,
     missing_identity_settings,
 )
@@ -71,6 +73,13 @@ def _build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--version", type=int, required=True)
     approve.add_argument("--by", required=True, help="who is approving")
 
+    demo = sub.add_parser("demo", help="demo-mode tools (need DEMO_MODE=true)")
+    dsub = demo.add_subparsers(dest="demo_command", required=True)
+    reset = dsub.add_parser(
+        "reset", help="delete the demo invoices, outbox, inbound mail, Stripe events and policies"
+    )
+    reset.add_argument("--yes", action="store_true", help="do not ask for typed confirmation")
+
     ev = sub.add_parser(
         "eval-classifier",
         help="run the Jev classifier over the synthetic replies (needs TYPESAFE_API_KEY)",
@@ -92,6 +101,7 @@ def main(
     classifiers: tuple[ReplyClassifier, ReplyClassifier] | None = None,
     cognee: CogneeGateway | None = None,
     extractor: PolicyExtractor | None = None,
+    confirm: Callable[[str], str] = input,
 ) -> int:
     """Entry point. The keyword arguments exist so tests can inject fakes; the console script
     passes none and everything comes from the environment."""
@@ -111,6 +121,8 @@ def main(
 
     if args.command == "policy":
         return _policy(args, factory, settings, cognee, extractor)
+    if args.command == "demo":
+        return _demo_reset(args, settings, factory, confirm)
     return _run_daily(args, settings, factory, gateway)
 
 
@@ -213,6 +225,32 @@ def _policy_ingest(
     return OK
 
 
+def _default_run_date(settings: Settings, factory: sessionmaker[Session]) -> date:
+    """Today in London; in demo mode the simulated clock's date."""
+    if settings.demo_mode:
+        with factory() as session:
+            return clock_today(session)
+    return datetime.now(LONDON).date()
+
+
+def _demo_reset(
+    args: argparse.Namespace,
+    settings: Settings,
+    factory: sessionmaker[Session],
+    confirm: Callable[[str], str],
+) -> int:
+    try:
+        deleted = confirm_and_reset(settings, factory, assume_yes=args.yes, confirm=confirm)
+    except DemoResetRefused as exc:
+        _err(str(exc))
+        return USAGE_OR_CONFIG
+    if deleted is None:
+        _err("not confirmed; nothing deleted")
+        return USAGE_OR_CONFIG
+    print(json.dumps(deleted, indent=2))
+    return OK
+
+
 def _run_daily(
     args: argparse.Namespace,
     settings: Settings,
@@ -233,7 +271,7 @@ def _run_daily(
     else:
         gateway = None  # a dry run never calls Stripe
 
-    run_date = args.date or get_today()
+    run_date = args.date or _default_run_date(settings, factory)
     try:
         report = run_daily(factory, gateway, identity, run_date, dry_run=args.dry_run)
     except NoApprovedPolicyError:

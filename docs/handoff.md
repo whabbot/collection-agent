@@ -15,59 +15,118 @@ Policies (when to follow up, e.g. after 1 week of no response; company rules, e.
 
 | File | What's in it |
 |---|---|
-| `CLAUDE.md` (repo root) | Read by Claude Code every session; imports decisions + architecture and sets the working rules |
+| `CLAUDE.md` (repo root) | Read by Claude Code every session; imports decisions + architecture, sets the working rules, lists the commands |
 | `docs/handoff.md` | This file: status and next steps |
-| `docs/decisions.md` | What's decided, what's a proposed default awaiting confirmation, open questions |
+| `docs/decisions.md` | What's decided, what's still a proposed default, open questions |
 | `docs/architecture.md` | The design: Stripe invoices, hard vs soft policy split, components, state machine, reply handling, guardrails |
-| `docs/jev.md` | Jev (TypeSafe) reply-classifier integration notes: SDK, limits, what they change in the design |
-| `docs/setup-and-inputs.md` | Accounts, credentials, inputs still needed, and how to re-create the Cognee setup in a new session |
+| `docs/jev.md` | Jev (TypeSafe) reply-classifier notes: SDK, known weaknesses, what they change in the design |
+| `docs/setup-and-inputs.md` | Accounts, credentials, env var names, inputs still needed, how to re-create the Cognee setup |
+| `docs/plans/slice-N-*.md` | The spec each slice was built from (1–9) |
+| `docs/demo-runbook.md` | Demo setup, date picking, click-path, reset (written by the slice-9 builder) |
 
-## Status (15 Oct 2026)
+## Where things stand (15 Oct 2026, end of session)
 
-- [x] Architecture designed (outbound chasing + inbound reply handling)
-- [x] Cognee Cloud tenant created; API key verified working (tenant has one empty dataset, `default_dataset`)
-- [x] `cognee-memory` Claude Code plugin installed (in the previous session's workspace only)
-- [x] Stack, clearance month and `ChasePolicy` numbers confirmed (see `decisions.md` → Decided)
-- [x] GitHub repo: `whabbot/collection-agent`
-- [x] Cognee key in `~/.cognee/.env` verified working (200 on `/api/v1/datasets/`, 15 Oct)
-- [x] **Slice 1 built** and committed to `main` (spec: `docs/plans/slice-1-chase-policy.md`): uv + Python 3.14 skeleton, `WorkingCalendar`/`uk_calendar`, `ChasePolicy`, `decide_next_action` + 56 tests; pytest, ruff, ruff format, mypy strict all pass
-- [x] **Slice 2 built** and committed to `main` (spec: `docs/plans/slice-2-service-and-db.md`): FastAPI app with `/healthz`, Postgres 18 via `compose.yaml` (localhost:55432), SQLAlchemy 2 models, Alembic initial migration, repository layer mapping rows to the slice-1 models; 88 tests (58 without the DB)
-- [x] **Slice 3 built** and committed to `main` (spec: `docs/plans/slice-3-stripe.md`): `POST /invoices` (bearer `ADMIN_API_TOKEN`; Stripe customer + finalized invoice, `auto_advance=false`, idempotency keys from `reference`) and `POST /webhooks/stripe` (signature check, event dedupe, paid/void/uncollectible). Stripe faked in tests; fixtures are hand-written. The stored `invoices.due_on` is now the single deadline `decide_next_action` uses
-- [x] **Slice 4 built** and committed to `main` (spec: `docs/plans/slice-4-invoice-email.md`): Postmark sender (tracking off, no auto-retry), contract PDF upload, plain-text invoice email template, approval outbox (`GET /outbox`, approve, reject). Approving the invoice email sends it and sets `invoices.sent_on`, which starts the chase clock. A send with an unknown outcome stays in `sending` and blocks re-drafting
-- [x] **Slice 5 built** and committed to `main` (spec: `docs/plans/slice-5-daily-run-and-reminders.md`): `collection-agent run-daily [--date] [--dry-run]` re-checks Stripe, drafts template reminders (friendly → firm → formal) into the outbox, or escalates (`GET /invoices?state=escalated`). Approving a reminder records it in `reminders`. `POST /outbox/{id}/resolve` clears stuck sends. `collection-agent policy create-default|approve|show` seeds the first `ChasePolicy`
-- [x] **Slice 6 built** and committed to `main` (spec: `docs/plans/slice-6-inbound-replies.md`): `POST /webhooks/inbound` (Basic auth, Message-ID dedupe, auto-reply drop, matching by reply token → threading → sender), `JevClassifier` (typesafe-sdk 0.7.5, pinned `jev-1.13.0`, date parts assembled in code), code routing table with template reply drafts in the outbox, `GET /inbox` + review logging. 47 synthetic replies (5 injection cases); live eval via `collection-agent eval-classifier` / `pytest -m live`, not yet run
-- [x] **Slice 7 built** (spec: `docs/plans/slice-7-rule-tags.md`): `describe_rule` tags each reminder draft, sent reminder and escalation with the rule that fired (e.g. "No response for 7 days (last contact …)"); shown in outbox and escalation responses and daily-run outcomes
-- [x] **Slice 8 built** (spec: `docs/plans/slice-8-policy-ingest-and-extraction.md`): `POST /policies/documents` stores the pasted policy, ingests it into Cognee `policies` (`add_text` + background `cognify`), and has Claude (`claude-opus-5-5`, structured output, server-side fallback) propose a `ChasePolicy` draft. Each value is used only if its quote is verbatim, states that number, and isn't an injected instruction; otherwise the default applies. Rule cards via `GET /policies/{v}/cards`, approve via `POST /policies/{v}/approve`, Cognee graph proxy `GET /policies/graph`, CLI `policy ingest`. Live extraction test not yet run
-- [ ] Confirm remaining proposed defaults (email provider, hosting, scheduler, promise-date limit, reply routing, taste)
-- [ ] Collect inputs: policy docs, sample contract, example chase emails, sample customer replies
-- [ ] Stripe test-mode keys + webhook secret
-- [ ] Email provider account + domain DNS
-- [ ] Rotate the Cognee API key (it was pasted into chat on 15 Oct) — current key works; rotation not confirmed
+**`main` is pushed with slices 1–9.** Migrations are at `0008`.
+
+**Slice 9 (demo page) is committed.**
+- 856 tests pass. Tests now never read `.env` (session guard plus a test that proves it).
+- Checked in the browser with no keys: the page loads, the token dialog works, the three-column layout is right at 1600 px, and errors show as visible toasts.
+- The full click-through with real services hasn't been done yet.
+- Builder deviations kept:
+  1. `GET /invoices` with no filter lists recent invoices.
+  2. Python-side `created_at` defaults, so events within one transaction keep their order.
+  3. The timeline orders by action time.
+  4. `demo reset` clears all demo tables but keeps the clock. It's guarded by `DEMO_MODE` and the DB name.
+- Cosmetic: "View Cognee graph" still shows when Cognee isn't configured.
+
+**Incident, 15 Oct ~20:52 UK:** while checking the page, the local server read the project `.env`. Launch-config unsets don't stop pydantic-settings reading that file. As a result, the sample policy (`tests/fixtures/policy_sample.txt`) was sent to the real Cognee tenant: it created the `policies` dataset (1 item) and started cognify. No Claude or Stripe calls were made. Whether to delete that item is the **user's decision (pending)**. To run the app with no keys, start it from a directory with no `.env` (see `.claude/launch.json`, not committed).
+
+### Built so far
+
+| Slice | What it does |
+|---|---|
+| 1 | `ChasePolicy`, the England & Wales `WorkingCalendar`, and the pure `decide_next_action` (unchanged since; uses the stored `due_on`) |
+| 2 | FastAPI app, Postgres 18 (`compose.yaml`, localhost:55432), SQLAlchemy 2, Alembic, repository layer |
+| 3 | `POST /invoices`: Stripe customer + finalized invoice, `auto_advance=false`, idempotent on `reference`. `POST /webhooks/stripe`: signature check, dedupe; paid / void / uncollectible |
+| 4 | Contract PDF upload, plain-text invoice email, approval outbox (`/outbox`, approve / reject / resolve), Postmark sender (tracking off, no auto-retry). Sending the invoice email sets `sent_on` |
+| 5 | `collection-agent run-daily [--date] [--dry-run]`: re-checks Stripe, then drafts a template reminder (friendly → firm → formal) or escalates. `policy create-default / approve / show` |
+| 6 | `POST /webhooks/inbound` (Postmark): dedupe, auto-reply drop, matching. Jev classifier (`jev-1.13.0`). Code routing table → template reply drafts. `/inbox` review log |
+| 7 | Rule tags (`describe_rule`) on reminder drafts, sent reminders and escalations, e.g. "No response for 7 days (last contact …)" |
+| 8 | `POST /policies/documents`: Cognee `policies` ingest + Claude (`claude-opus-5-5`) extraction into a `ChasePolicy` draft. A value is used only if its quote is verbatim, states the number and isn't an injected instruction. Rule cards, approve, Cognee graph proxy, CLI `policy ingest` |
+| 9 | `/demo` page, demo clock + "Skip 7 days", simulate customer reply, `EMAIL_SENDER=log`, `GET /invoices/{id}/timeline`, `demo reset` |
+
+Guardrails that still hold:
+- Hard chase timing comes only from the approved `ChasePolicy`. Nothing at chase time calls Claude or Cognee.
+- Customer email is untrusted. No code path changes amounts, currency or due dates.
+- Paid is set only after Stripe confirms it.
+- Nothing is sent without human approval.
+
+## Current priority: the hackathon demo
+
+A 60-second video (storyboard sent by the "Hackathon demo storyboard" session; recorded in `decisions.md`):
+1. 0–5s: an awkward "following up" email.
+2. 5–15s: paste the policy → Cognee ingests it, Claude extracts rule cards → approve.
+3. 15–25s: invoice with Stripe link + contract → "Skip 7 days" → a reminder tagged with its rule.
+4. 25–40s: customer replies "we'll pay on the 12th" → Jev says promise to pay → acknowledgement drafted, approved, sent → chasing pauses.
+5. 40–50s: paid in Stripe → the timeline closes.
+6. 50–60s: end card (Stripe / Cognee / Claude logos, repo URL).
+
+Date gotcha: if the skip lands in the 3-working-day pre-deadline window you get `pre_deadline` instead of the 7-day `no_response`. Start the clock early in the month on a weekday (e.g. Thu 1 Oct 2026 → due Mon 16 Nov 2026 → skip to Thu 8 Oct). Check with `run-daily --dry-run --date`.
+
+## Next steps (in order)
+
+1. **User decides:** keep or delete the sample-policy item in Cognee `policies` (see Incident above).
+2. **The user adds keys to `.env`** (Claude cannot create accounts or enter keys):
+   - `STRIPE_SECRET_KEY`: a Stripe **sandbox** restricted key (`rk_…`).
+   - `STRIPE_WEBHOOK_SECRET`: from `stripe listen --forward-to localhost:8000/webhooks/stripe`.
+   - `ANTHROPIC_API_KEY`: policy extraction.
+   - `TYPESAFE_API_KEY`: Jev reply classification.
+   - `COGNEE_BASE_URL`, `COGNEE_API_KEY`: from `~/.cognee/.env`; **rotate the key first** (it was pasted into chat on 15 Oct).
+   - `ADMIN_API_TOKEN`: any long random string.
+   - `DEMO_MODE=true`, and `EMAIL_SENDER=log` (safest for the video) or Postmark (`POSTMARK_SERVER_TOKEN` + confirmed sender + `EMAIL_FROM_*` / `REPLY_TO_DOMAIN` / `COMPANY_NAME`). A new Postmark account may only send to its own domain until approved, so check that.
+   - The Stripe webhook endpoint must use the API version the installed `stripe` SDK pins (`2026-09-30.endive`).
+3. **Run the two opt-in live checks** once the keys are in (they cost money; confirm first):
+   - `uv run pytest -m live`: Claude extraction on `tests/fixtures/policy_sample.txt` (expects max reminders 3, not the injected 50) and the Jev classifier.
+   - `uv run collection-agent eval-classifier`: Jev accuracy, date accuracy, option-order flips.
+4. **Full demo rehearsal** with the real services: approve the policy, then `demo reset` between takes. Replace the hand-written Stripe fixtures in `tests/fixtures/stripe/` with real `stripe listen` captures.
+5. After the demo:
+   - choose hosting for the daily job (proposed: weekdays 08:00 UK);
+   - Claude drafting of reminders once tone examples exist;
+   - Cognee soft-guidance recall for drafting;
+   - a reviewer UI beyond the demo page.
 
 ## Working method
 
-The main session orchestrates: it writes a spec in `docs/plans/`, then hands the build to a coding subagent (**Sonnet, medium effort**), then re-runs the checks itself before reporting. Work is committed straight to `main` — no feature branches or PRs.
+- The main session orchestrates. It writes a spec in `docs/plans/`, hands the build to a coding subagent (**Sonnet, medium effort**, per the user), then re-runs the checks and reads the risky code itself before committing. The user doesn't want the orchestrator writing code itself.
+- Builders work on `main` and leave changes uncommitted. The orchestrator commits straight to `main` and pushes. **No feature branches or PRs** (the user's instruction).
+- Before building on anything still marked "proposed" in `decisions.md`, ask the user. Record their answer as "Decided".
+- The repo is **public**: never commit real keys. The compose DB password is a throwaway, and the DB port is bound to 127.0.0.1.
 
-## Next steps
+## Decisions made this session (details in `decisions.md`)
 
-1. **Before the first real run:** `uv run collection-agent policy create-default`, then `policy approve --version 1 --by <name>`. Choose where the daily job runs (hosting is still only proposed) and call `collection-agent run-daily` weekday mornings (proposed 08:00 UK).
-2. **Run the live Jev eval** once `TYPESAFE_API_KEY` is in `.env`: `uv run collection-agent eval-classifier`. Check per-intent accuracy and the option-order flips before trusting `CLASSIFIER_MIN_CONFIDENCE=0.6`.
-3. When policy docs arrive: load them into the Cognee `policies` dataset and test recall before deciding how much to extract into typed config.
-4. **First live run (user wants a Stripe test account):**
-   - The user creates a Stripe **sandbox** and a restricted key, and puts it in `.env` as `STRIPE_SECRET_KEY`. Claude can't create accounts or enter keys.
-   - Run the app locally, use `stripe listen --forward-to localhost:8000/webhooks/stripe` for the webhook secret, then create a test invoice end to end.
-   - Replace the hand-written fixtures in `tests/fixtures/stripe/` with real captures.
-   - For email: a Postmark server token, a confirmed sender signature on the billing subdomain, and `EMAIL_FROM_*` / `REPLY_TO_DOMAIN` / `COMPANY_NAME` in `.env`. Send only to your own address first.
-5. **Later:** Claude drafting of reminders, once tone examples and policy docs exist (templates are the v1 decision).
+| Topic | Decision |
+|---|---|
+| Stack | Python 3.14 + FastAPI, Postgres 18, SQLAlchemy 2, Pydantic 2, managed with `uv` |
+| Clearance deadline | 15th of the month after sending |
+| `ChasePolicy` defaults | 7 / 3 / 3 / 2 |
+| Email | Postmark |
+| Reply classifier | Jev (`TYPESAFE_API_KEY`), no summary field |
+| Reminder drafting (v1) | Templates |
+| Reply routing table | Confirmed |
+| Promise-to-pay limit | Up to `due_on` |
+| Claude | `claude-opus-5-5`, policy extraction only |
+| Priority | The hackathon demo comes first |
 
 ## Open points
 
-- **Deadline month when sending is delayed:** `due_on` is fixed at invoice creation (15th of the month after creation). If approval delays the first email past a month end, should the deadline follow the creation month (current behaviour) or the sent month?
-- **Contract-specific due dates:** `due_on` is now the single deadline, so a contract date can override it at creation once we want that.
-- **Customers by email:** two concurrent first invoices for the same new email can create two Stripe customers. There's no unique constraint on email, because different companies might share an AP inbox. Revisit if it bites.
-- **Multi-currency:** a Stripe customer is single-currency. Invoicing an existing customer in a new currency will fail with 502.
-- **Escalation notifications:** escalated invoices are only listed by `GET /invoices?state=escalated`; nobody is notified. Who receives escalations is still an open question.
-- **Reviewer UI:** the outbox is API-only. Where the approval queue lives (email, Slack, admin page) is still open.
-- **Sender identity** (person vs team) is still open. It's set through `EMAIL_FROM_NAME`, so no code change is needed when it's decided.
-- **Rule tag nit:** `broken_promise_at_max` is unreachable (the spec's condition keys on reminder count). It should be chosen when the promise is broken at max reminders. The label is the same either way.
-- Housekeeping: Starlette warns that `TestClient` via `httpx` is deprecated (suggests `httpx2`).
+- **Deadline month when sending is delayed:** `due_on` is fixed at invoice creation. If approval delays the first email past a month end, should it follow the sent month instead?
+- **Contract-specific due dates:** they could override `due_on` at creation.
+- **Duplicate customers:** two concurrent first invoices for one new email can create two Stripe customers. There's no unique constraint on email, because AP inboxes can be shared.
+- **Multi-currency:** a Stripe customer is single-currency, so invoicing in a second currency returns 502.
+- **Escalations:** nobody is notified yet (open: who receives them).
+- **Approval queue location:** the outbox is API-only apart from the demo page. Where it should live (email, Slack, admin page) is open.
+- **Sender identity** (person vs team): `EMAIL_FROM_NAME`, no code change needed.
+- **Rule-tag nit:** `broken_promise_at_max` is unreachable. It should key on "promise broken at max". The label is the same either way.
+- **Starlette warning:** `TestClient` via `httpx` is deprecated (suggests `httpx2`).
+- **Still proposed, not decided:** hosting, scheduler time, "taste" defaults, sender identity, escalation contacts, phrases never to use, whether this is UK B2B (late-payment interest needs legal advice).
+- **Inputs still wanted:** real policy docs, a sample contract, 2–3 good and 1 bad chase email, 10–20 real customer replies.

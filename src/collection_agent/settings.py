@@ -1,8 +1,9 @@
 """Application settings, read from the environment (and `.env` if present)."""
 
 from functools import lru_cache
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,6 +30,15 @@ class Settings(BaseSettings):
     cognee_base_url: str | None = None
     cognee_api_key: str | None = None
     cognee_policies_dataset: str = "policies"
+    demo_mode: bool = False
+    email_sender: Literal["postmark", "log"] = "postmark"
+
+    @model_validator(mode="after")
+    def _log_sender_is_demo_only(self) -> Self:
+        """Real customers must never silently not get mail: `log` needs DEMO_MODE=true."""
+        if self.email_sender == "log" and not self.demo_mode:
+            raise ValueError("EMAIL_SENDER=log is only allowed with DEMO_MODE=true")
+        return self
 
 
 class TypesafeSettings(BaseSettings):

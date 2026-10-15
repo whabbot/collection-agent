@@ -11,6 +11,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from collection_agent.db.engine import make_engine
+from collection_agent.settings import Settings, TypesafeSettings
 
 DEFAULT_TEST_DATABASE_URL = (
     "postgresql+psycopg://collection_agent:collection_agent@localhost:55432/collection_agent_test"
@@ -87,3 +88,30 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     if live:
         items[:] = [item for item in items if item not in live]
         config.hook.pytest_deselected(items=live)
+
+
+_REAL_SERVICE_ENV = (
+    "TYPESAFE_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "COGNEE_",
+    "STRIPE_",
+    "POSTMARK_",
+    "INBOUND_WEBHOOK_",
+    "ADMIN_API_TOKEN",
+    "DEMO_MODE",
+    "EMAIL_SENDER",
+)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _no_real_credentials() -> Iterator[None]:
+    """Tests never read a project `.env` and never see real-service variables, so a field a
+    test forgets to set can only be its default, never a real key."""
+    patch = pytest.MonkeyPatch()
+    for cls in (Settings, TypesafeSettings):
+        patch.setitem(cls.model_config, "env_file", None)
+    for name in list(os.environ):
+        if name.startswith(_REAL_SERVICE_ENV):
+            patch.delenv(name)
+    yield
+    patch.undo()

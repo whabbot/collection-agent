@@ -26,6 +26,8 @@ INBOUND_WEBHOOK_PASSWORD=   # HTTP Basic password for the same
 COGNEE_BASE_URL=
 COGNEE_API_KEY=
 COGNEE_POLICIES_DATASET=    # optional, defaults to policies
+DEMO_MODE=                  # optional, default false; true enables /demo and the demo helpers
+EMAIL_SENDER=               # optional: postmark (default) or log (log needs DEMO_MODE=true)
 DATABASE_URL=
 ```
 

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collection agent demo</title>
+<link rel="stylesheet" href="/demo/demo.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="mark" aria-hidden="true"></span>Collection agent</div>
+  <div class="clock" aria-live="polite">
+    <span class="clock-label">Demo date</span>
+    <span id="clock-date" class="clock-date">-</span>
+  </div>
+</header>
+
+<main class="grid">
+  <!-- 1. Policy -->
+  <section class="col" aria-labelledby="h-policy">
+    <h2 id="h-policy"><span class="step">1</span>Policy</h2>
+    <label for="policy-text" class="field-label">Credit control policy</label>
+    <textarea id="policy-text" rows="9" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="btn-extract" class="primary" type="button">Extract rules</button>
+      <button id="btn-graph" class="ghost" type="button">View Cognee graph</button>
+    </div>
+    <div id="policy-status" class="muted small"></div>
+    <div id="cards" class="cards"></div>
+    <div id="soft" class="soft" hidden>
+      <h3>Soft guidance</h3>
+      <ul id="soft-list"></ul>
+    </div>
+    <div id="approve-row" class="row">
+      <button id="btn-approve" class="primary" type="button" disabled>Approve policy</button>
+    </div>
+  </section>
+
+  <!-- 2. Invoice + timeline -->
+  <section class="col" aria-labelledby="h-invoice">
+    <h2 id="h-invoice"><span class="step">2</span>Invoice</h2>
+    <details id="new-invoice" class="new">
+      <summary>New invoice</summary>
+      <form id="invoice-form" class="form">
+        <label>Customer name<input name="name" value="Northwind Traders" required></label>
+        <label>Customer email<input name="email" type="email" value="accounts@example.com" required></label>
+        <label>Reference<input name="reference" required pattern="[A-Za-z0-9_\-]{1,64}"></label>
+        <label>Line description<input name="description" value="Consulting, October" required></label>
+        <label>Amount (GBP)<input name="amount" type="number" min="1" step="0.01" value="1200.00" required></label>
+        <label>Contract (PDF)<input name="contract" type="file" accept="application/pdf" required></label>
+        <button class="primary" type="submit">Create and draft email</button>
+      </form>
+    </details>
+
+    <label for="invoice-pick" class="field-label">Invoice</label>
+    <select id="invoice-pick"></select>
+    <div id="invoice-head" class="inv-head" hidden>
+      <div class="inv-amount" id="inv-amount"></div>
+      <div class="inv-meta">
+        <span id="inv-pill" class="pill"></span>
+        <span id="inv-due" class="small muted"></span>
+      </div>
+      <a id="inv-pay" class="pay" target="_blank" rel="noopener" href="#">Pay link</a>
+    </div>
+
+    <h3>Timeline</h3>
+    <ol id="timeline" class="timeline"></ol>
+
+    <div class="reply">
+      <label for="reply-text" class="field-label">Customer reply</label>
+      <textarea id="reply-text" rows="2">Thanks for the reminder - we'll pay on the 12th.</textarea>
+      <button id="btn-reply" class="primary" type="button">Send as customer</button>
+    </div>
+  </section>
+
+  <!-- 3. Queue + clock -->
+  <section class="col" aria-labelledby="h-queue">
+    <h2 id="h-queue"><span class="step">3</span>Approval queue</h2>
+    <div class="row">
+      <button id="btn-skip" class="primary" type="button">Skip 7 days</button>
+      <button id="btn-run" class="ghost" type="button">Run daily now</button>
+    </div>
+    <div id="run-note" class="muted small" aria-live="polite"></div>
+    <ul id="outbox" class="outbox"></ul>
+    <div id="sent-wrap" hidden>
+      <h3>Sent mail</h3>
+      <ul id="sent" class="outbox"></ul>
+    </div>
+  </section>
+</main>
+
+<dialog id="token-dialog">
+  <form method="dialog" id="token-form">
+    <h2>Admin token</h2>
+    <p class="muted">Kept in this tab only.</p>
+    <label for="token-input" class="field-label">ADMIN_API_TOKEN</label>
+    <input id="token-input" type="password" autocomplete="off" required>
+    <button class="primary" type="submit">Continue</button>
+  </form>
+</dialog>
+
+<dialog id="graph-dialog" class="wide">
+  <div class="row between"><h2>Cognee graph</h2><button id="graph-close" class="ghost" type="button">Close</button></div>
+  <iframe id="graph-frame" sandbox="allow-scripts" title="Cognee graph"></iframe>
+</dialog>
+
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+<script src="/demo/demo.js"></script>
+</body>
+</html>

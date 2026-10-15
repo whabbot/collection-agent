@@ -173,11 +173,11 @@ async def inbound_webhook(
     except ValueError:
         return _error("invalid_json", 400)
     return await run_in_threadpool(
-        _process, session, payload, settings, classifier, gateway, identity, now
+        process_inbound, session, payload, settings, classifier, gateway, identity, now
     )
 
 
-def _process(
+def process_inbound(
     session: Session,
     payload: Any,
     settings: Settings,
@@ -186,6 +186,8 @@ def _process(
     identity: EmailIdentity | None,
     now: datetime,
 ) -> Response:
+    """Everything the webhook does after authentication. The demo's simulate-reply calls this
+    same function, so a simulated reply takes exactly the real path."""
     email = parse_inbound(payload)
     if email is None:
         return _error("no_message_id", 400)

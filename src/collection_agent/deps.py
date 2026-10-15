@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from collection_agent.classifier import JevClassifier, ReplyClassifier
 from collection_agent.cognee_client import CogneeGateway, LiveCognee
 from collection_agent.db.engine import make_engine, make_session_factory
+from collection_agent.demo_support import LoggingEmailSender, clock_now, clock_today
 from collection_agent.email_sender import EmailSender, PostmarkSender
 from collection_agent.policy_extraction import ClaudeExtractor, PolicyExtractor
 from collection_agent.settings import Settings, get_settings
@@ -32,8 +33,14 @@ def get_session() -> Iterator[Session]:
         yield session
 
 
+def get_session_factory() -> sessionmaker[Session]:
+    """For code that opens its own sessions (the daily run). Tests override this."""
+    return _session_factory()
+
+
 SessionDep = Annotated[Session, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+SessionFactoryDep = Annotated[sessionmaker[Session], Depends(get_session_factory)]
 
 
 def require_admin(
@@ -65,8 +72,11 @@ def get_stripe_gateway(settings: SettingsDep) -> StripeGateway:
 GatewayDep = Annotated[StripeGateway, Depends(get_stripe_gateway)]
 
 
-def get_today() -> date:
-    """Today's date in Europe/London. Override in tests to control the clock."""
+def get_today(settings: SettingsDep, session: SessionDep) -> date:
+    """Today's date in Europe/London; in demo mode the simulated clock's date. Override in tests
+    to control the clock."""
+    if settings.demo_mode:
+        return clock_today(session)
     return datetime.now(LONDON).date()
 
 
@@ -78,7 +88,13 @@ def _postmark_sender(token: str, stream: str) -> PostmarkSender:
     return PostmarkSender(token, stream)
 
 
-def get_email_sender(settings: SettingsDep) -> EmailSender:
+def get_email_sender(settings: SettingsDep, session: SessionDep) -> EmailSender:
+    if settings.email_sender == "log":
+        if not settings.demo_mode:  # also refused when the settings are loaded; belt and braces
+            raise HTTPException(
+                status_code=503, detail={"error": "log_email_sender_requires_demo_mode"}
+            )
+        return LoggingEmailSender(session)
     if not settings.postmark_server_token:
         raise HTTPException(status_code=503, detail={"error": "postmark_not_configured"})
     return _postmark_sender(settings.postmark_server_token, settings.postmark_message_stream)
@@ -134,8 +150,11 @@ def get_email_identity(settings: SettingsDep) -> EmailIdentity:
 EmailIdentityDep = Annotated[EmailIdentity, Depends(get_email_identity)]
 
 
-def get_now() -> datetime:
-    """The current moment, timezone-aware. Override in tests to control the clock."""
+def get_now(settings: SettingsDep, session: SessionDep) -> datetime:
+    """The current moment, timezone-aware; in demo mode the simulated date at the real time of
+    day. Override in tests to control the clock."""
+    if settings.demo_mode:
+        return clock_now(session)
     return datetime.now(UTC)
 
 

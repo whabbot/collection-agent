@@ -415,9 +415,9 @@ def test_escalations_list_filters_and_orders_newest_first(session: Session) -> N
     assert rows[1]["reminder_count"] == 0
 
 
-def test_escalations_list_only_supports_the_escalated_filter(session: Session) -> None:
+def test_invoice_list_only_supports_the_escalated_filter(session: Session) -> None:
     client, _ = setup(session)
-    assert client.get("/invoices", headers=AUTH).status_code == 422
+    assert client.get("/invoices", headers=AUTH).status_code == 200  # slice 9: the recent list
     assert client.get("/invoices", params={"state": "active"}, headers=AUTH).status_code == 422
 
 

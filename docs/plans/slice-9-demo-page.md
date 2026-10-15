@@ -1,6 +1,6 @@
 # Slice 9 — One-page demo UI (+ demo-mode helpers)
 
-Status: ready to build (15 Oct 2026), **after slice 8 is committed** (it uses the slice-8 policy endpoints). Work on `main`, leave changes uncommitted for review. Migration `0008` if needed.
+Status: built and committed to `main` (15 Oct 2026).
 
 ## Goal
 

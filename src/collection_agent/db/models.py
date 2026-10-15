@@ -2,7 +2,7 @@
 
 import secrets
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -77,6 +77,10 @@ def _pg_enum[E: StrEnum](enum_cls: type[E], name: str) -> Enum:
     return Enum(enum_cls, name=name, values_callable=lambda e: [m.value for m in e])
 
 
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
 def _new_reply_token() -> str:
     return secrets.token_hex(16)
 
@@ -104,7 +108,9 @@ class Invoice(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=_utcnow
+    )
     customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id"))
     stripe_invoice_id: Mapped[str] = mapped_column(String, unique=True)
     reference: Mapped[str] = mapped_column(String, unique=True)
@@ -132,7 +138,9 @@ class Reminder(Base):
     __table_args__ = (Index("ix_reminders_invoice_id", "invoice_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=_utcnow
+    )
     invoice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("invoices.id"))
     kind: Mapped[ReminderKind] = mapped_column(_pg_enum(ReminderKind, "reminder_kind"))
     sent_on: Mapped[date] = mapped_column(Date)
@@ -176,7 +184,9 @@ class InboundMessage(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=_utcnow
+    )
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("invoices.id"))
     message_id: Mapped[str] = mapped_column(String, unique=True)
     from_address: Mapped[str] = mapped_column(String)
@@ -283,7 +293,9 @@ class StripeEvent(Base):
     __tablename__ = "stripe_events"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=_utcnow
+    )
     event_id: Mapped[str] = mapped_column(String, unique=True)
     type: Mapped[str] = mapped_column(String)
     stripe_object_id: Mapped[str | None] = mapped_column(String)
@@ -296,7 +308,9 @@ class Contract(Base):
     __tablename__ = "contracts"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=_utcnow
+    )
     invoice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("invoices.id"), unique=True)
     filename: Mapped[str] = mapped_column(String)
     content: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
@@ -335,7 +349,9 @@ class OutboundEmail(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=_utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -380,3 +396,32 @@ class DailyRun(Base):
     finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     dry_run: Mapped[bool] = mapped_column(Boolean)
     counts: Mapped[dict[str, int]] = mapped_column(JSONB)
+
+
+class DemoClock(Base):
+    """The simulated clock (DEMO_MODE only): one row, `id` is always 1."""
+
+    __tablename__ = "demo_clock"
+    __table_args__ = (CheckConstraint("id = 1", name="demo_clock_single_row"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    today: Mapped[date] = mapped_column(Date)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class DemoSentEmail(Base):
+    """What the `log` email sender "sent" (DEMO_MODE only): nothing leaves the machine."""
+
+    __tablename__ = "demo_sent_emails"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=_utcnow
+    )
+    to_address: Mapped[str] = mapped_column(String)
+    subject: Mapped[str] = mapped_column(String)
+    body_text: Mapped[str] = mapped_column(Text)
+    attachment_names: Mapped[list[str]] = mapped_column(JSONB)
+    provider_message_id: Mapped[str | None] = mapped_column(String)

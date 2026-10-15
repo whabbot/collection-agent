@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from collection_agent.app import create_app
 from collection_agent.classifier import ReplyClassifier
@@ -18,6 +18,7 @@ from collection_agent.deps import (
     get_policy_extractor,
     get_reply_classifier,
     get_session,
+    get_session_factory,
     get_stripe_gateway,
     get_today,
 )
@@ -40,8 +41,8 @@ class PoisonSession:
         raise AssertionError(f"database touched: session.{name}")
 
 
-def make_settings(**overrides: str | None) -> Settings:
-    base: dict[str, str | None] = {
+def make_settings(**overrides: str | bool | None) -> Settings:
+    base: dict[str, str | bool | None] = {
         "database_url": "postgresql+psycopg://x:x@127.0.0.1:1/x",
         "admin_api_token": ADMIN_TOKEN,
         "stripe_secret_key": "sk_test_fake_not_real",
@@ -70,6 +71,8 @@ def make_client(
     now: datetime = NOW,
     cognee: CogneeGateway | None = None,
     extractor: PolicyExtractor | None = None,
+    session_factory: sessionmaker[Session] | None = None,
+    real_clock: bool = False,
 ) -> TestClient:
     app = create_app()
 
@@ -78,9 +81,12 @@ def make_client(
 
     app.dependency_overrides[get_session] = _session
     app.dependency_overrides[get_settings] = lambda: settings or make_settings()
-    app.dependency_overrides[get_today] = lambda: today
+    if not real_clock:  # `real_clock` lets demo-mode tests exercise the real clock dependencies
+        app.dependency_overrides[get_today] = lambda: today
+        app.dependency_overrides[get_now] = lambda: now
+    if session_factory is not None:
+        app.dependency_overrides[get_session_factory] = lambda: session_factory
     # Always overridden, so a test can never build a real Jev or Stripe client by accident.
-    app.dependency_overrides[get_now] = lambda: now
     app.dependency_overrides[get_reply_classifier] = lambda: classifier
     app.dependency_overrides[get_cognee] = lambda: cognee
     app.dependency_overrides[get_policy_extractor] = lambda: extractor

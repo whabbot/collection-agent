@@ -255,12 +255,66 @@ class EscalatedInvoiceOut(BaseModel):
     reminder_count: int
 
 
+class InvoiceSummaryOut(BaseModel):
+    id: uuid.UUID
+    reference: str
+    customer_name: str
+    customer_email: str
+    amount_minor: int
+    currency: str
+    status: str
+    state: str
+    due_on: date
+    sent_on: date | None
+    hosted_invoice_url: str | None
+    promised_date: date | None
+    paused_until: date | None
+
+
+RECENT_INVOICES_LIMIT = 50
+
+
 @router.get("/invoices", response_model=None)
 def list_invoices(
-    _admin: AdminDep, session: SessionDep, state: Literal["escalated"]
+    _admin: AdminDep, session: SessionDep, state: Literal["escalated"] | None = None
 ) -> JSONResponse:
-    """Invoices the daily run handed to a human, newest escalation first. Only the `state`
-    filter exists, and only for `escalated`."""
+    """With `state=escalated`: invoices the daily run handed to a human, newest escalation
+    first. Without a filter: the most recent invoices, newest first."""
+    if state is None:
+        return _recent_invoices(session)
+    return _escalated_invoices(session)
+
+
+def _recent_invoices(session: Session) -> JSONResponse:
+    rows = session.execute(
+        select(Invoice, Customer)
+        .join(Customer, Customer.id == Invoice.customer_id)
+        .order_by(Invoice.created_at.desc(), Invoice.id.desc())
+        .limit(RECENT_INVOICES_LIMIT)
+    ).all()
+    return JSONResponse(
+        [
+            InvoiceSummaryOut(
+                id=inv.id,
+                reference=inv.reference,
+                customer_name=cust.name,
+                customer_email=cust.email,
+                amount_minor=inv.amount_minor,
+                currency=inv.currency,
+                status=inv.status.value,
+                state=inv.state.value,
+                due_on=inv.due_on,
+                sent_on=inv.sent_on,
+                hosted_invoice_url=inv.hosted_invoice_url,
+                promised_date=inv.promised_date,
+                paused_until=inv.paused_until,
+            ).model_dump(mode="json")
+            for inv, cust in rows
+        ]
+    )
+
+
+def _escalated_invoices(session: Session) -> JSONResponse:
     reminder_count = (
         select(func.count(Reminder.id))
         .where(Reminder.invoice_id == Invoice.id)
