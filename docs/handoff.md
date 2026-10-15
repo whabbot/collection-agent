@@ -39,7 +39,7 @@ Policies (when to follow up, e.g. after 1 week of no response; company rules, e.
   4. `demo reset` clears all demo tables but keeps the clock. It's guarded by `DEMO_MODE` and the DB name.
 - Cosmetic: "View Cognee graph" still shows when Cognee isn't configured.
 
-**Incident, 15 Oct ~20:52 UK:** while checking the page, the local server read the project `.env`. Launch-config unsets don't stop pydantic-settings reading that file. As a result, the sample policy (`tests/fixtures/policy_sample.txt`) was sent to the real Cognee tenant: it created the `policies` dataset (1 item) and started cognify. No Claude or Stripe calls were made. Whether to delete that item is the **user's decision (pending)**. To run the app with no keys, start it from a directory with no `.env` (see `.claude/launch.json`, not committed).
+**Incident, 15 Oct ~20:52 UK:** while checking the page, the local server read the project `.env`. Launch-config unsets don't stop pydantic-settings reading that file. As a result, the sample policy (`tests/fixtures/policy_sample.txt`) was sent to the real Cognee tenant: it created the `policies` dataset (1 item) and started cognify. No Claude or Stripe calls were made. The user chose to **keep** it (15 Oct). To run the app with no keys, start it from a directory with no `.env` (see `.claude/launch.json`, not committed).
 
 ### Built so far
 
@@ -75,8 +75,7 @@ Date gotcha: if the skip lands in the 3-working-day pre-deadline window you get 
 
 ## Next steps (in order)
 
-1. **User decides:** keep or delete the sample-policy item in Cognee `policies` (see Incident above).
-2. **The user adds keys to `.env`** (Claude cannot create accounts or enter keys):
+1. **The user adds keys to `.env`** (Claude cannot create accounts or enter keys):
    - `STRIPE_SECRET_KEY`: a Stripe **sandbox** restricted key (`rk_…`).
    - `STRIPE_WEBHOOK_SECRET`: from `stripe listen --forward-to localhost:8000/webhooks/stripe`.
    - `ANTHROPIC_API_KEY`: policy extraction.
@@ -85,11 +84,11 @@ Date gotcha: if the skip lands in the 3-working-day pre-deadline window you get 
    - `ADMIN_API_TOKEN`: any long random string.
    - `DEMO_MODE=true`, and `EMAIL_SENDER=log` (safest for the video) or Postmark (`POSTMARK_SERVER_TOKEN` + confirmed sender + `EMAIL_FROM_*` / `REPLY_TO_DOMAIN` / `COMPANY_NAME`). A new Postmark account may only send to its own domain until approved, so check that.
    - The Stripe webhook endpoint must use the API version the installed `stripe` SDK pins (`2026-09-30.endive`).
-3. **Run the two opt-in live checks** once the keys are in (they cost money; confirm first):
+2. **Run the two opt-in live checks** once the keys are in (they cost money; confirm first):
    - `uv run pytest -m live`: Claude extraction on `tests/fixtures/policy_sample.txt` (expects max reminders 3, not the injected 50) and the Jev classifier.
    - `uv run collection-agent eval-classifier`: Jev accuracy, date accuracy, option-order flips.
-4. **Full demo rehearsal** with the real services: approve the policy, then `demo reset` between takes. Replace the hand-written Stripe fixtures in `tests/fixtures/stripe/` with real `stripe listen` captures.
-5. After the demo:
+3. **Full demo rehearsal** with the real services: approve the policy, then `demo reset` between takes. Replace the hand-written Stripe fixtures in `tests/fixtures/stripe/` with real `stripe listen` captures.
+4. After the demo:
    - choose hosting for the daily job (proposed: weekdays 08:00 UK);
    - Claude drafting of reminders once tone examples exist;
    - Cognee soft-guidance recall for drafting;
