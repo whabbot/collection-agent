@@ -5,11 +5,11 @@ import logging
 import re
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +27,7 @@ from collection_agent.db.models import (
 )
 from collection_agent.deps import AdminDep, EmailIdentityDep, EmailSenderDep, SessionDep, TodayDep
 from collection_agent.email_sender import Attachment, EmailSendError, OutgoingEmail
+from collection_agent.outbox import apply_sent, new_outbound_email
 from collection_agent.templates import render_invoice_email
 
 logger = logging.getLogger(__name__)
@@ -249,17 +250,14 @@ def draft_invoice_email(
         from_name=identity.from_name,
         company_name=identity.company_name,
     )
-    email = OutboundEmail(
-        invoice_id=invoice_id,
-        kind=OutboundKind.INVOICE.value,
-        to_address=customer.email,
-        from_address=identity.from_address,
-        from_name=identity.from_name,
-        reply_to=f"reply+{invoice.reply_token}@{identity.reply_to_domain}",
+    email = new_outbound_email(
+        invoice=invoice,
+        customer=customer,
+        identity=identity,
+        kind=OutboundKind.INVOICE,
         subject=subject,
-        body_text=body,
+        body=body,
         attach_contract=True,
-        status=OutboundStatus.PENDING_APPROVAL,
     )
     session.add(email)
     try:
@@ -418,11 +416,59 @@ def approve(
         session.commit()
         return _error("send_failed", 502)
 
-    # Step 3: record the send.
-    row.status = OutboundStatus.SENT
-    row.sent_at = datetime.now(UTC)
-    row.provider_message_id = sent.provider_message_id
-    if row.kind == OutboundKind.INVOICE and invoice.sent_on is None:
-        invoice.sent_on = today
+    # Step 3: record the send (for a reminder, also the `reminders` row, in the same commit).
+    apply_sent(session, row, invoice, today=today, provider_message_id=sent.provider_message_id)
+    session.commit()
+    return _json(session, row)
+
+
+class ResolveIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resolved_by: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+    ]
+    outcome: Literal["sent", "failed"]
+    provider_message_id: Annotated[str, StringConstraints(min_length=1, max_length=200)] | None = (
+        None
+    )
+
+    @model_validator(mode="after")
+    def _id_only_for_sent(self) -> ResolveIn:
+        if self.provider_message_id is not None and self.outcome != "sent":
+            raise ValueError("provider_message_id is only valid when outcome is 'sent'")
+        return self
+
+
+@router.post("/outbox/{outbox_id}/resolve", response_model=None)
+def resolve(
+    outbox_id: uuid.UUID,
+    body: ResolveIn,
+    _admin: AdminDep,
+    session: SessionDep,
+    today: TodayDep,
+) -> Response:
+    """A person has checked Postmark's activity log and says what happened to a row stuck in
+    `sending`. Nothing is ever sent from here."""
+    row = _lock_outbox(session, outbox_id)
+    if row is None:
+        session.rollback()
+        return _error("not_found", 404)
+    if row.status is not OutboundStatus.SENDING:
+        session.rollback()
+        return _error("not_sending", 409)
+    invoice = session.scalars(
+        select(Invoice)
+        .where(Invoice.id == row.invoice_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one()
+    if body.outcome == "sent":
+        apply_sent(session, row, invoice, today=today, provider_message_id=body.provider_message_id)
+    else:
+        row.status = OutboundStatus.FAILED
+        row.error = f"resolved as failed by {body.resolved_by}"
+    row.resolved_by = body.resolved_by
+    row.resolved_at = datetime.now(UTC)
     session.commit()
     return _json(session, row)

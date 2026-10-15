@@ -92,20 +92,40 @@ class EmailIdentity:
     company_name: str
 
 
-def get_email_identity(settings: SettingsDep) -> EmailIdentity:
-    if not (
+_IDENTITY_SETTINGS = (
+    ("EMAIL_FROM_ADDRESS", "email_from_address"),
+    ("EMAIL_FROM_NAME", "email_from_name"),
+    ("REPLY_TO_DOMAIN", "reply_to_domain"),
+    ("COMPANY_NAME", "company_name"),
+)
+
+
+def missing_identity_settings(settings: Settings) -> list[str]:
+    """Names of the environment variables the email identity needs and does not have."""
+    return [env for env, attr in _IDENTITY_SETTINGS if not getattr(settings, attr)]
+
+
+def identity_from_settings(settings: Settings) -> EmailIdentity | None:
+    if (
         settings.email_from_address
         and settings.email_from_name
         and settings.reply_to_domain
         and settings.company_name
     ):
+        return EmailIdentity(
+            settings.email_from_address,
+            settings.email_from_name,
+            settings.reply_to_domain,
+            settings.company_name,
+        )
+    return None
+
+
+def get_email_identity(settings: SettingsDep) -> EmailIdentity:
+    identity = identity_from_settings(settings)
+    if identity is None:
         raise HTTPException(status_code=503, detail={"error": "email_not_configured"})
-    return EmailIdentity(
-        settings.email_from_address,
-        settings.email_from_name,
-        settings.reply_to_domain,
-        settings.company_name,
-    )
+    return identity
 
 
 EmailIdentityDep = Annotated[EmailIdentity, Depends(get_email_identity)]

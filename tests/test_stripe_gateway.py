@@ -47,6 +47,8 @@ class StubHTTPClient(HTTPClient):
                 "status": "open",
                 "hosted_invoice_url": "https://invoice.stripe.test/i/in_stub_1",
             }
+        elif path == "/v1/invoices/in_stub_1" and method == "get":
+            body = {"id": "in_stub_1", "object": "invoice", "status": "paid"}
         else:
             raise AssertionError(f"unexpected Stripe request: {method} {path}")
         return json.dumps(body), 200, {"request-id": "req_stub"}
@@ -120,3 +122,15 @@ def test_stripe_errors_propagate() -> None:
         assert exc.request_id == "req_stub_fail"
     else:
         raise AssertionError("expected a StripeError")
+
+
+def test_get_invoice_status_is_a_read_only_retrieve() -> None:
+    http = StubHTTPClient()
+    gw = LiveStripeGateway("sk_test_fake_not_real", http_client=http)
+
+    assert gw.get_invoice_status("in_stub_1") == "paid"
+
+    (req,) = http.requests
+    assert (req["method"], req["path"]) == ("get", "/v1/invoices/in_stub_1")
+    assert req["form"] == {}
+    assert header(req, "Stripe-Version") == STRIPE_API_VERSION

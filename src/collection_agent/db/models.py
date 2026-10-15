@@ -20,6 +20,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from collection_agent.chasing import InvoiceState, InvoiceStatus, ReminderKind
@@ -43,6 +44,16 @@ class OutboundKind(StrEnum):
     """Extendable: add a value here, to the CHECK constraint and in a new migration."""
 
     INVOICE = "invoice"
+    REMINDER = "reminder"
+    REMINDER_PRE_DEADLINE = "reminder_pre_deadline"
+    REMINDER_BROKEN_PROMISE = "reminder_broken_promise"
+
+
+REMINDER_OUTBOUND_KINDS: dict[OutboundKind, ReminderKind] = {
+    OutboundKind.REMINDER: ReminderKind.REMINDER,
+    OutboundKind.REMINDER_PRE_DEADLINE: ReminderKind.PRE_DEADLINE,
+    OutboundKind.REMINDER_BROKEN_PROMISE: ReminderKind.BROKEN_PROMISE,
+}
 
 
 def _pg_enum[E: StrEnum](enum_cls: type[E], name: str) -> Enum:
@@ -90,6 +101,7 @@ class Invoice(Base):
     state: Mapped[InvoiceState] = mapped_column(_pg_enum(InvoiceState, "invoice_state"))
     paused_until: Mapped[date | None] = mapped_column(Date)
     promised_date: Mapped[date | None] = mapped_column(Date)
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reply_token: Mapped[str] = mapped_column(String, unique=True, default=_new_reply_token)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -189,7 +201,10 @@ class OutboundEmail(Base):
 
     __tablename__ = "outbound_emails"
     __table_args__ = (
-        CheckConstraint("kind IN ('invoice')", name="kind_known"),
+        CheckConstraint(
+            "kind IN ('invoice', 'reminder', 'reminder_pre_deadline', 'reminder_broken_promise')",
+            name="kind_known",
+        ),
         Index("ix_outbound_emails_status", "status"),
         # At most one live invoice email per invoice: the guard against sending it twice.
         Index(
@@ -197,6 +212,17 @@ class OutboundEmail(Base):
             "invoice_id",
             unique=True,
             postgresql_where=text("kind = 'invoice' AND status NOT IN ('rejected', 'failed')"),
+        ),
+        # At most one reminder per invoice waiting for approval or being sent: stops the daily
+        # run drafting a second reminder while one is outstanding.
+        Index(
+            "uq_outbound_emails_one_active_reminder",
+            "invoice_id",
+            unique=True,
+            postgresql_where=text(
+                "kind IN ('reminder', 'reminder_pre_deadline', 'reminder_broken_promise') "
+                "AND status IN ('pending_approval', 'sending')"
+            ),
         ),
     )
 
@@ -223,3 +249,18 @@ class OutboundEmail(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     provider_message_id: Mapped[str | None] = mapped_column(String)
     error: Mapped[str | None] = mapped_column(Text)
+    resolved_by: Mapped[str | None] = mapped_column(String)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DailyRun(Base):
+    """One row per (non-dry) execution of the daily job."""
+
+    __tablename__ = "daily_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_date: Mapped[date] = mapped_column(Date)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    dry_run: Mapped[bool] = mapped_column(Boolean)
+    counts: Mapped[dict[str, int]] = mapped_column(JSONB)

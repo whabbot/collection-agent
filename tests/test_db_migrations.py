@@ -14,6 +14,7 @@ EXPECTED_TABLES = {
     "chase_policies",
     "contracts",
     "outbound_emails",
+    "daily_runs",
     "alembic_version",
 }
 
@@ -74,3 +75,40 @@ def test_0003_round_trips_and_has_the_outbox_guards(db_engine: Engine) -> None:
     assert "invoice" in where
     assert "rejected" in where
     assert "failed" in where
+
+
+def test_0004_round_trips_and_has_the_reminder_guard(db_engine: Engine) -> None:
+    cfg = alembic_config(get_test_database_url())
+    command.downgrade(cfg, "0003")
+    insp = inspect(db_engine)
+    assert "daily_runs" not in insp.get_table_names()
+    assert "escalated_at" not in {c["name"] for c in insp.get_columns("invoices")}
+    old_cols = {c["name"] for c in insp.get_columns("outbound_emails")}
+    assert not ({"resolved_by", "resolved_at"} & old_cols)
+    assert "uq_outbound_emails_one_active_reminder" not in {
+        i["name"] for i in insp.get_indexes("outbound_emails")
+    }
+    command.upgrade(cfg, "head")
+
+    insp = inspect(db_engine)
+    assert "daily_runs" in insp.get_table_names()
+    assert {c["name"] for c in insp.get_columns("daily_runs")} == {
+        "id",
+        "run_date",
+        "started_at",
+        "finished_at",
+        "dry_run",
+        "counts",
+    }
+    assert "escalated_at" in {c["name"] for c in insp.get_columns("invoices")}
+    assert {"resolved_by", "resolved_at"} <= {
+        c["name"] for c in insp.get_columns("outbound_emails")
+    }
+    indexes = {i["name"]: i for i in insp.get_indexes("outbound_emails")}
+    guard = indexes["uq_outbound_emails_one_active_reminder"]
+    assert guard["unique"] is True
+    assert guard["column_names"] == ["invoice_id"]
+    where = guard["dialect_options"]["postgresql_where"]
+    assert "pending_approval" in where
+    assert "sending" in where
+    assert "reminder_broken_promise" in where

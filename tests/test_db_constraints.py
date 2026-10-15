@@ -3,7 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from collection_agent.db.models import ChasePolicyRow, PolicyStatus
+from collection_agent.db.models import ChasePolicyRow, OutboundEmail, OutboundStatus, PolicyStatus
 from tests.db_helpers import make_customer, make_invoice
 
 pytestmark = pytest.mark.db
@@ -73,4 +73,59 @@ def test_multiple_non_approved_policies_allowed(session: Session) -> None:
 def test_invalid_policy_numbers_rejected(session: Session, field: str, value: int) -> None:
     with pytest.raises(IntegrityError), session.begin_nested():
         session.add(_policy(1, PolicyStatus.DRAFT, **{field: value}))
+        session.flush()
+
+
+def _outbox(inv_id: object, kind: str, status: OutboundStatus) -> OutboundEmail:
+    return OutboundEmail(
+        invoice_id=inv_id,
+        kind=kind,
+        to_address="a@b.test",
+        from_address="f@b.test",
+        from_name="F",
+        reply_to="r@b.test",
+        subject="s",
+        body_text="b",
+        attach_contract=False,
+        status=status,
+    )
+
+
+@pytest.mark.parametrize("first", [OutboundStatus.PENDING_APPROVAL, OutboundStatus.SENDING])
+@pytest.mark.parametrize(
+    "second_kind", ["reminder", "reminder_pre_deadline", "reminder_broken_promise"]
+)
+def test_second_active_reminder_for_one_invoice_rejected(
+    session: Session, first: OutboundStatus, second_kind: str
+) -> None:
+    inv = make_invoice(session)
+    session.add(_outbox(inv.id, "reminder", first))
+    session.flush()
+    with pytest.raises(IntegrityError), session.begin_nested():
+        session.add(_outbox(inv.id, second_kind, OutboundStatus.PENDING_APPROVAL))
+        session.flush()
+
+
+def test_reminders_are_allowed_when_the_earlier_ones_are_finished(session: Session) -> None:
+    inv = make_invoice(session)
+    for status in (OutboundStatus.SENT, OutboundStatus.REJECTED, OutboundStatus.FAILED):
+        session.add(_outbox(inv.id, "reminder", status))
+    session.add(_outbox(inv.id, "reminder", OutboundStatus.PENDING_APPROVAL))
+    session.flush()
+
+
+def test_active_reminder_does_not_block_another_invoice_or_the_invoice_email(
+    session: Session,
+) -> None:
+    a, b = make_invoice(session), make_invoice(session)
+    session.add(_outbox(a.id, "reminder", OutboundStatus.PENDING_APPROVAL))
+    session.add(_outbox(b.id, "reminder", OutboundStatus.PENDING_APPROVAL))
+    session.add(_outbox(a.id, "invoice", OutboundStatus.PENDING_APPROVAL))
+    session.flush()
+
+
+def test_unknown_outbox_kind_rejected(session: Session) -> None:
+    inv = make_invoice(session)
+    with pytest.raises(IntegrityError), session.begin_nested():
+        session.add(_outbox(inv.id, "final_notice", OutboundStatus.PENDING_APPROVAL))
         session.flush()

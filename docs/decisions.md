@@ -16,6 +16,7 @@ Three kinds of entry: **Decided** (the team said so), **Proposed default** (sugg
 | Repo | `whabbot/collection-agent` |
 | Clearance deadline | 15th of the month **following** the month the invoice was sent; rolls to the next working day if it falls on a weekend or bank holiday |
 | Email provider | **Postmark** for sending and inbound (decided 15 Oct 2026) |
+| Reminder drafting (v1) | **Fixed plain-text templates** (friendly → firm → formal by reminder number), no LLM. Claude drafting comes later, once tone examples and policy docs exist. Every draft is human-approved (decided 15 Oct 2026) |
 | Reply classifier | **Jev** (TypeSafe): typed decisions with calibrated probabilities. Use it directly; no comparison against other models. Classification only; drafting still needs a generative LLM. Key in `TYPESAFE_API_KEY` (the SDK default). No `summary` field in v1: Jev can't generate text, and reviewers read the email itself. See `docs/jev.md` (decided 15 Oct 2026) |
 | `ChasePolicy` defaults | 7 days no response; pre-deadline reminder 3 working days before the deadline; escalate after 3 reminders; 2 business days grace after a missed promise; no sends on weekends or England & Wales bank holidays (decided 15 Oct 2026) |
 

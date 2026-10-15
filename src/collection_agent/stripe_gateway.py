@@ -49,6 +49,8 @@ class StripeGateway(Protocol):
 
     def finalize_invoice(self, invoice_id: str, idempotency_key: str) -> FinalizedInvoice: ...
 
+    def get_invoice_status(self, stripe_invoice_id: str) -> str: ...
+
 
 class LiveStripeGateway:
     """Real Stripe calls. Invoices are created collection_method=send_invoice with
@@ -116,6 +118,10 @@ class LiveStripeGateway:
             status=str(invoice.status),
             hosted_invoice_url=invoice.hosted_invoice_url,
         )
+
+    def get_invoice_status(self, stripe_invoice_id: str) -> str:
+        """Read-only: the invoice's current Stripe status (draft/open/paid/void/uncollectible)."""
+        return str(self._client.v1.invoices.retrieve(stripe_invoice_id).status)
 
 
 class WebhookSignatureError(ValueError):

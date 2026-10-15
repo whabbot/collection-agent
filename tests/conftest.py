@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, text
+from sqlalchemy import Connection, Engine, text
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from collection_agent.db.engine import make_engine
 
@@ -49,14 +49,29 @@ def db_engine() -> Iterator[Engine]:
 
 
 @pytest.fixture
-def session(db_engine: Engine) -> Iterator[Session]:
-    """A session inside a transaction that is always rolled back."""
+def db_conn(db_engine: Engine) -> Iterator[Connection]:
+    """A connection inside a transaction that is always rolled back."""
     conn = db_engine.connect()
     outer = conn.begin()
-    sess = Session(bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False)
+    try:
+        yield conn
+    finally:
+        outer.rollback()
+        conn.close()
+
+
+@pytest.fixture
+def session(db_conn: Connection) -> Iterator[Session]:
+    """A session inside a transaction that is always rolled back."""
+    sess = Session(bind=db_conn, join_transaction_mode="create_savepoint", expire_on_commit=False)
     try:
         yield sess
     finally:
         sess.close()
-        outer.rollback()
-        conn.close()
+
+
+@pytest.fixture
+def session_factory(db_conn: Connection) -> sessionmaker[Session]:
+    """Sessions on the same rolled-back transaction as `session`, for code that opens and
+    commits its own sessions (the daily run, the CLI)."""
+    return sessionmaker(db_conn, join_transaction_mode="create_savepoint", expire_on_commit=False)

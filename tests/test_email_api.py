@@ -72,6 +72,8 @@ ROUTES = [
     ("GET", "/outbox/{id}"),
     ("POST", "/outbox/{id}/approve"),
     ("POST", "/outbox/{id}/reject"),
+    ("POST", "/outbox/{id}/resolve"),
+    ("GET", "/invoices?state=escalated"),
 ]
 
 

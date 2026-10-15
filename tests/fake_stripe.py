@@ -15,6 +15,8 @@ class FakeStripeGateway:
         self.created: list[str] = []  # method names that actually created something
         self.fail_on: dict[str, Exception] = {}
         self.before: dict[str, Callable[[], None]] = {}
+        self.statuses: dict[str, str] = {}  # stripe invoice id -> status; default "open"
+        self.status_errors: dict[str, Exception] = {}
         self._by_key: dict[str, tuple[str, Any]] = {}
         self._n = 0
 
@@ -102,3 +104,9 @@ class FakeStripeGateway:
         )
         assert isinstance(result, FinalizedInvoice)
         return result
+
+    def get_invoice_status(self, stripe_invoice_id: str) -> str:
+        self.calls.append(("get_invoice_status", {"stripe_invoice_id": stripe_invoice_id}))
+        if stripe_invoice_id in self.status_errors:
+            raise self.status_errors[stripe_invoice_id]
+        return self.statuses.get(stripe_invoice_id, "open")

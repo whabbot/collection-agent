@@ -3,7 +3,7 @@
 import logging
 import uuid
 from datetime import date, datetime, time
-from typing import Annotated
+from typing import Annotated, Literal
 
 import stripe
 from fastapi import APIRouter, Response
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from collection_agent.calendar import uk_calendar
 from collection_agent.chasing import InvoiceState, InvoiceStatus
-from collection_agent.db.models import Customer, Invoice
+from collection_agent.db.models import Customer, Invoice, Reminder
 from collection_agent.db.repository import NoApprovedPolicyError, get_approved_policy
 from collection_agent.deps import LONDON, AdminDep, GatewayDep, SessionDep, TodayDep
 from collection_agent.stripe_gateway import StripeGateway
@@ -239,3 +239,51 @@ def create_invoice(
             return existing
         raise
     return JSONResponse(_out(invoice).model_dump(mode="json"), status_code=201)
+
+
+class EscalatedInvoiceOut(BaseModel):
+    id: uuid.UUID
+    reference: str
+    customer_name: str
+    customer_email: str
+    amount_minor: int
+    currency: str
+    due_on: date
+    escalated_at: datetime | None
+    reminder_count: int
+
+
+@router.get("/invoices", response_model=None)
+def list_invoices(
+    _admin: AdminDep, session: SessionDep, state: Literal["escalated"]
+) -> JSONResponse:
+    """Invoices the daily run handed to a human, newest escalation first. Only the `state`
+    filter exists, and only for `escalated`."""
+    reminder_count = (
+        select(func.count(Reminder.id))
+        .where(Reminder.invoice_id == Invoice.id)
+        .correlate(Invoice)
+        .scalar_subquery()
+    )
+    rows = session.execute(
+        select(Invoice, Customer, reminder_count)
+        .join(Customer, Customer.id == Invoice.customer_id)
+        .where(Invoice.state == InvoiceState.ESCALATED)
+        .order_by(Invoice.escalated_at.desc().nulls_last(), Invoice.id)
+    ).all()
+    return JSONResponse(
+        [
+            EscalatedInvoiceOut(
+                id=inv.id,
+                reference=inv.reference,
+                customer_name=cust.name,
+                customer_email=cust.email,
+                amount_minor=inv.amount_minor,
+                currency=inv.currency,
+                due_on=inv.due_on,
+                escalated_at=inv.escalated_at,
+                reminder_count=count,
+            ).model_dump(mode="json")
+            for inv, cust, count in rows
+        ]
+    )
