@@ -2,6 +2,8 @@
 
 Start here. This folder is the shared context for building the payment-collection agent.
 
+**The hackathon finished on 16 Oct 2026, and work stopped there.** For what to do next, read [`docs/next-steps.md`](next-steps.md) first. `README.md` has the overview and quick start.
+
 ## What we're building
 
 An agent that:
@@ -16,6 +18,8 @@ Policies (when to follow up, e.g. after 1 week of no response; company rules, e.
 | File | What's in it |
 |---|---|
 | `CLAUDE.md` (repo root) | Read by Claude Code every session; imports decisions + architecture, sets the working rules, lists the commands |
+| `README.md` | Overview, quick start, tests |
+| `docs/next-steps.md` | Prioritised next steps after the hackathon |
 | `docs/handoff.md` | This file: status and next steps |
 | `docs/decisions.md` | What's decided, what's still a proposed default, open questions |
 | `docs/architecture.md` | The design: Stripe invoices, hard vs soft policy split, components, state machine, reply handling, guardrails |
